@@ -9,7 +9,7 @@ from networks import SimpleFC
 def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     train_dataset = VideoDataset(part='train')
-    test_dataset = VideoDataset(part='test')
+    test_dataset = VideoDataset(part='train') #TODO: change later
     class_info = train_dataset.get_class_info()
     train_loader = DataLoader(train_dataset, batch_size=1,
                         shuffle=True, num_workers=4)
@@ -51,17 +51,24 @@ def main():
 
     print('Finished Training')
 
+    PATH = 'models/cifar_net.pth'
+    torch.save(net.state_dict(), PATH)
+
+    net = SimpleFC(400, n_class).to(device)
+    net.load_state_dict(torch.load(PATH))
+
     correct = 0
     total = 0
     with torch.no_grad():
-        for data in train_loader:
-            images, labels = data[0].to(device), data[1].to(device)
-            outputs = net(images)
+        for data in test_dataset:
+            inputs = torch.squeeze(data[0], dim=0).to(device)
+            labels = torch.squeeze(data[1], dim=0).to(device)
+            outputs = net(inputs)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-    print('Accuracy of the network on the test data: %d %%' % (
+    print('Accuracy of the network on the train data: %d %%' % (
     100 * correct / total))
 
 
