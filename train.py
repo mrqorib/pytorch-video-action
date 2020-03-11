@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset
 from networks import SimpleFC
+from datetime import datetime
 
 
 def main():
@@ -12,9 +13,9 @@ def main():
     test_dataset = VideoDataset(part='train') #TODO: change later
     class_info = train_dataset.get_class_info()
     train_loader = DataLoader(train_dataset, batch_size=1,
-                        shuffle=True, num_workers=4)
+                        shuffle=True, pin_memory=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=1,
-                        shuffle=True, num_workers=4)
+                        shuffle=True, pin_memory=True, num_workers=4)
     n_class = len(class_info['class_names'])
     net = SimpleFC(400, n_class).to(device)
 
@@ -23,6 +24,7 @@ def main():
     total_epoch = 10
 
     for epoch in range(total_epoch):  # loop over the dataset multiple times
+        start = datetime.now()
         running_loss = 0.0
         print('Starting Epoch #{}, {} iterations'.format(epoch + 1, len(train_loader)))
         for i, data in enumerate(train_loader, 0):
@@ -45,8 +47,9 @@ def main():
             # print statistics
             running_loss += loss.item()
         
-        print('[%d, %5d] loss: %.3f' %
-            (epoch + 1, i + 1, running_loss / i))
+        delta_time = (datetime.now() - start).seconds / 60.0
+        print('[%d, %5d] loss: %.3f (%.3f mins)' %
+            (epoch + 1, i + 1, running_loss / i, delta_time))
         running_loss = 0.0
 
     print('Finished Training')

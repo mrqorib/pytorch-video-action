@@ -1,0 +1,32 @@
+Action IDs
+{'cereals': 0, 'friedegg': 1, 'juice': 2, 'milk': 3, 'pancake': 4, 'salat': 5, 'sandwich': 6, 'tea': 7, 'coffee': 8, 'scrambledegg': 9}
+
+Partition  0
+Train action  Counter({0: 125, 3: 124, 7: 123, 8: 116, 1: 116, 2: 116, 6: 113, 9: 112, 5: 111, 4: 108})
+Dev action  Counter({0: 32, 3: 32, 7: 31, 1: 30, 2: 30, 6: 29, 8: 29, 5: 28, 9: 28, 4: 27})
+Train cameras  Counter({'cam01': 265, 'webcam02': 249, 'cam02': 247, 'stereo01': 208, 'webcam01': 195})
+Dev cameras  Counter({'cam01': 76, 'webcam02': 74, 'webcam01': 73, 'stereo01': 48, 'cam02': 25})
+
+Partition  1
+Train action  Counter({0: 125, 3: 125, 7: 123, 1: 117, 2: 117, 8: 116, 6: 113, 9: 112, 5: 111, 4: 108})
+Dev action  Counter({0: 32, 7: 31, 3: 31, 8: 29, 1: 29, 2: 29, 6: 29, 5: 28, 9: 28, 4: 27})
+Train cameras  Counter({'webcam02': 276, 'webcam01': 255, 'cam01': 247, 'stereo01': 207, 'cam02': 182})
+Dev cameras  Counter({'cam01': 94, 'cam02': 90, 'stereo01': 49, 'webcam02': 47, 'webcam01': 13})
+
+Partition  2
+Train action  Counter({0: 126, 3: 125, 7: 123, 1: 117, 2: 117, 8: 116, 6: 114, 9: 112, 5: 111, 4: 108})
+Dev action  Counter({3: 31, 7: 31, 0: 31, 8: 29, 2: 29, 1: 29, 6: 28, 5: 28, 9: 28, 4: 27})
+Train cameras  Counter({'cam01': 275, 'webcam02': 255, 'cam02': 237, 'webcam01': 215, 'stereo01': 187})
+Dev cameras  Counter({'stereo01': 69, 'webcam02': 68, 'cam01': 66, 'webcam01': 53, 'cam02': 35})
+
+Partition  3
+Train action  Counter({0: 126, 3: 125, 7: 123, 1: 117, 2: 117, 8: 116, 6: 114, 9: 112, 5: 111, 4: 108})
+Dev action  Counter({3: 31, 0: 31, 7: 31, 8: 29, 2: 29, 1: 29, 6: 28, 5: 28, 9: 28, 4: 27})
+Train cameras  Counter({'cam01': 283, 'webcam02': 255, 'stereo01': 220, 'cam02': 209, 'webcam01': 202})
+Dev cameras  Counter({'webcam02': 68, 'webcam01': 66, 'cam02': 63, 'cam01': 58, 'stereo01': 36})
+
+Partition  4
+Train action  Counter({0: 126, 3: 125, 7: 124, 1: 117, 2: 117, 8: 116, 6: 114, 5: 112, 9: 112, 4: 108})
+Dev action  Counter({3: 31, 0: 31, 7: 30, 8: 29, 1: 29, 2: 29, 6: 28, 9: 28, 4: 27, 5: 27})
+Train cameras  Counter({'cam01': 294, 'webcam02': 257, 'cam02': 213, 'webcam01': 205, 'stereo01': 202})
+Dev cameras  Counter({'webcam02': 66, 'webcam01': 63, 'cam02': 59, 'stereo01': 54, 'cam01': 47})
