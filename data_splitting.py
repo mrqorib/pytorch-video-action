@@ -80,7 +80,7 @@ def main():
     c = np.array(c)
     
     print(action_ids)
-    return
+    
     for part_idx, (train_index, dev_index) in enumerate(skf.split(x, y)):
         x_train = x[train_index]
         y_train = y[train_index]
@@ -117,7 +117,7 @@ def main():
                                         'dev.split{}.bundle'.format(part_idx))
         with open(dev_filename, 'w') as f:
             f.write('# ' + str(dev_action))
-            for filepath in x_train:
+            for filepath in x_dev:
                 f.write(filepath + '\n')
 
 

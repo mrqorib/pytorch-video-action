@@ -8,11 +8,11 @@ class VideoDataset(Dataset):
 
 
     # TODO: Fix load_all
-    def __init__(self, data_dir='./data', annot_path='.', part='train', load_all=False):
+    def __init__(self, data_dir='./data', annot_path='.', part='train', split=0, load_all=False):
         self.part = part.lower().strip()
-        if self.part not in ["train", "test"]:
-            ValueError("please provide the part only with train/test")
-        split_file = os.path.join(annot_path, 'splits', 'splits', '{}.split1.bundle'.format(part))
+        if self.part not in ["train", "dev", "test"]:
+            ValueError("please provide the part only with train/dev/test")
+        split_file = os.path.join(annot_path, 'splits', 'new_splits', '{}.split{}.bundle'.format(part, split))
         split_content = self._read_file(split_file, offset_start=1)
         self.filenames = self._get_filenames_from_split(split_content)
         
@@ -25,7 +25,9 @@ class VideoDataset(Dataset):
 
         self.load_all = load_all
         if self.load_all:
+            print('Loading all {} data...'.format(part))
             self._load_all_data()
+            print('{} {} instances have been loaded.'.format(len(self.features), part))
 
 
     def _read_file(self, filename, offset_start = 0, offset_end=0):
@@ -107,11 +109,11 @@ class VideoDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
         
-        data = torch.from_numpy(self._get_feature(idx))
+        data = torch.as_tensor(self._get_feature(idx))
         if self.part == 'test':
             label = []
         else:
             label = self._get_label(idx)
-        label = torch.from_numpy(label)
-        label = label.type(torch.long)
+        label = torch.as_tensor(label, dtype=torch.long)
+        # label = label.type(torch.long)
         return (data, label)
