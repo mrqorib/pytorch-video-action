@@ -82,13 +82,25 @@ class VideoDataset(Dataset):
 
     
     def _load_all_data(self):
-        self.features = []
-        self.labels = []
-        for filename in self.filenames:
-            feature = self._load_feature_file(filename)
-            label = self._load_label_file(filename)
-            self.features.append(feature)
-            self.labels.append(label)
+        try:
+            self.features = np.load('data/pickled-features.npy', allow_pickle=True)
+            self.labels = np.load('data/pickled-labels.npy', allow_pickle=True)
+            print('Pickle files found. Loading from pickles')
+        except Exception as e:
+            print('Failed loading saved data \n  > ', e)
+            self.features = []
+            self.labels = []
+            for filename in self.filenames:
+                feature = self._load_feature_file(filename)
+                label = self._load_label_file(filename)
+                self.features.append(feature)
+                self.labels.append(label)
+            try:
+                np.save('data/pickled-features', self.features)
+                np.save('data/pickled-labels', self.labels)
+                print('All features and labels are successfully saved')
+            except Exception as e:
+                print('[WARNING] Failed to save data as pickle\n  > ', e)
 
 
     def _get_feature(self, idx):
