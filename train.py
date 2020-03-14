@@ -66,7 +66,8 @@ def main():
         raise NotImplementedError
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9)
+    #optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9)
+    optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
     total_epoch = args.epoch
 
     previous_dev = 0
