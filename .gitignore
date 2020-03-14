@@ -1,6 +1,6 @@
 __pycache__
-data/*.gz
-data/*.npy
-groundTruth/groundTruth/*.txt
-models/*.pth
+data/
+groundTruth/
+.ipynb_checkpoints/
+models/
 logs/
