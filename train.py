@@ -1,5 +1,6 @@
 from datetime import datetime
 import argparse
+import os
 
 import torch
 import torch.nn as nn
@@ -43,6 +44,7 @@ def evaluate(model, dev_dataset, device):
 
 def main():
     args = parse_arguments()
+    os.makedirs("models", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     train_dataset = VideoDataset(part='train', load_all=args.load_all)
     dev_dataset = VideoDataset(part='dev', load_all=args.load_all)

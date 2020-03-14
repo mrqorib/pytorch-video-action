@@ -10,6 +10,7 @@ class VideoDataset(Dataset):
     # TODO: Fix load_all
     def __init__(self, data_dir='./data', annot_path='.', part='train', split=0, load_all=False):
         self.part = part.lower().strip()
+        self.split = split
         if self.part not in ["train", "dev", "test"]:
             ValueError("please provide the part only with train/dev/test")
         split_file = os.path.join(annot_path, 'splits', 'new_splits', '{}.split{}.bundle'.format(part, split))
@@ -82,12 +83,16 @@ class VideoDataset(Dataset):
 
     
     def _load_all_data(self):
+        features_filename = 'data-comp/{}-{}-features.npy'.format(self.part, self.split)
+        labels_filename = 'data-comp/{}-{}-labels.npy'.format(self.part, self.split)
+        os.makedirs("data-comp", exist_ok=True)
         try:
-            self.features = np.load('data/pickled-features.npy', allow_pickle=True)
-            self.labels = np.load('data/pickled-labels.npy', allow_pickle=True)
+            self.features = np.load(features_filename, allow_pickle=True)
+            self.labels = np.load(labels_filename, allow_pickle=True)
             print('Pickle files found. Loading from pickles')
         except Exception as e:
             print('Failed loading saved data \n  > ', e)
+            print('Loading the data, please wait...')
             self.features = []
             self.labels = []
             for filename in self.filenames:
@@ -96,8 +101,8 @@ class VideoDataset(Dataset):
                 self.features.append(feature)
                 self.labels.append(label)
             try:
-                np.save('data/pickled-features', self.features)
-                np.save('data/pickled-labels', self.labels)
+                np.save(features_filename, self.features)
+                np.save(labels_filename, self.labels)
                 print('All features and labels are successfully saved')
             except Exception as e:
                 print('[WARNING] Failed to save data as pickle\n  > ', e)
