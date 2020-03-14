@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset
-from networks import SimpleFC #TODO: import your model here
+from networks import SimpleFC, vanillaLSTM #TODO: import your model here
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -20,12 +20,12 @@ def parse_arguments():
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
-                        choices=['simple_fc'], #TODO: add your model name here
+                        choices=['simple_fc', 'vanilla_lstm'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument("--load_all", type=bool, nargs='?',
                         const=True, default=False,
                         help='Load all data into RAM '\
-                            '(make sure you have enough free Memory).')                    
+                            '(make sure you have enough free Memory).')
     return parser.parse_args()
 
 def evaluate(model, dev_dataset, device):
@@ -58,15 +58,17 @@ def main():
     if args.model == 'simple_fc':
         net = SimpleFC(400, n_class).to(device)
     #TODO: add your model name here
+    elif args.model == 'vanilla_lstm':
+       net = vanillaLSTM(400, n_class).to(device)
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
     else:
         raise NotImplementedError
-    
+
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9)
     total_epoch = args.epoch
-    
+
     previous_dev = 0
     for epoch in range(total_epoch):
         start = datetime.now()
@@ -88,7 +90,7 @@ def main():
 
             # print statistics
             running_loss += loss.item()
-        
+
         delta_time = (datetime.now() - start).seconds / 60.0
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
             (epoch + 1, i + 1, running_loss / i, delta_time))
