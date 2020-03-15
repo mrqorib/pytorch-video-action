@@ -1,13 +1,71 @@
 import os
+from collections import OrderedDict
+from random import shuffle
+
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
+
+
+class BucketBatchSampler(Sampler):
+    def __init__(self, inputs, batch_size):
+        self.batch_size = batch_size
+        ind_n_len = []
+        for i, p in enumerate(inputs):
+            ind_n_len.append((i, p.shape[0]))
+        self.ind_n_len = ind_n_len
+        self.batch_list = self._generate_batch_map()
+        self.num_batches = len(self.batch_list)
+
+    def _generate_batch_map(self):
+        # only to mix the data with same length
+        shuffle(self.ind_n_len)
+        # sort list by data length
+        self.ind_n_len.sort(key=lambda x: x[1])
+        # Organize lengths, e.g., batch_map[10] = [30, 124, 203, ...] <= indices of sequences of length 10
+        batch_map = OrderedDict()
+        for idx, length in self.ind_n_len:
+            if length not in batch_map:
+                batch_map[length] = [idx]
+            else:
+                batch_map[length].append(idx)
+        # Use batch_map to split indices into batches of equal size
+        # e.g., for batch_size=3, batch_list = [[23,45,47], [49,50,62], [63,65,66], ...]
+        batch_list = []
+        for length, indices in batch_map.items():
+            batch_list += indices
+        # make the batches have the same size (as the self.batch_size)
+        if len(batch_list) % self.batch_size != 0:
+            addition_count = self.batch_size - (len(batch_list) % self.batch_size)
+            addition_sample = batch_list[(-2 * addition_count):]
+            shuffle(addition_sample)
+            batch_list += addition_sample[:addition_count]
+        
+        group_batch = []
+        for i in range(0, len(batch_list), self.batch_size):
+            group_batch.append(batch_list[i:i+self.batch_size])
+        
+        return group_batch
+
+    def batch_count(self):
+        return self.num_batches
+
+    def __len__(self):
+        return len(self.ind_n_len)
+
+    def __iter__(self):
+        self.group_batch = self._generate_batch_map()
+        # shuffle all the batches so they arent ordered by bucket size
+        shuffle(self.batch_list)
+        for i in self.batch_list:
+            yield i
+        # for i in range(0, len(self.batch_list), self.batch_size):
+        #     yield self.batch_list[i:i+self.batch_size]
 
 
 class VideoDataset(Dataset):
 
 
-    # TODO: Fix load_all
     def __init__(self, data_dir='./data', annot_path='.', part='train', split=0, load_all=False):
         self.part = part.lower().strip()
         self.split = split

@@ -1,5 +1,6 @@
 __pycache__
 data/
+data-comp/
 groundTruth/
 .ipynb_checkpoints/
 models/

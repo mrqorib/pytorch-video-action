@@ -3,15 +3,6 @@ import collections
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
 
-# X = np.array([[1, 2], [3, 4], [1, 2], [3, 4]])
-# >>> y = np.array([0, 0, 1, 1])
-# >>> skf = StratifiedKFold(n_splits=2)
-# >>> skf.get_n_splits(X, y)
-# 2
-# >>> print(skf)
-# StratifiedKFold(n_splits=2, random_state=None, shuffle=False)
-# >>> for train_index, test_index in skf.split(X, y):
-
 def get_class_info(map_list):
         class_info = {
             'class_ids': {},
