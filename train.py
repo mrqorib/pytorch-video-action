@@ -7,7 +7,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC #TODO: import your model here
+from networks import SimpleFC, vanillaLSTM #TODO: import your model here
+
 
 _TARGET_PAD = -1
 
@@ -22,12 +23,12 @@ def parse_arguments():
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
-                        choices=['simple_fc'], #TODO: add your model name here
+                        choices=['simple_fc', 'vanilla_lstm'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument("--load_all", type=bool, nargs='?',
                         const=True, default=False,
                         help='Load all data into RAM '\
-                            '(make sure you have enough free Memory).')                    
+                            '(make sure you have enough free Memory).')
     return parser.parse_args()
 
 def evaluate(model, dev_dataset, device):
@@ -35,9 +36,11 @@ def evaluate(model, dev_dataset, device):
     total = 0
     with torch.no_grad():
         for data in dev_dataset:
-            inputs = torch.squeeze(data[0], dim=0).to(device)
-            labels = torch.squeeze(data[1], dim=0).to(device)
-            outputs = model(inputs)
+            inputs, inputs_len, labels = data
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+
+            outputs = model(inputs, inputs_len)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -55,7 +58,7 @@ def main():
             x_len = [p.shape[0] for p in x]
             max_length = max(x_len)
             
-            padded_seqs = torch.zeros((batchsize, max_length, 400), dtype=torch.long)
+            padded_seqs = torch.zeros((batchsize, max_length, 400))
             padded_target = torch.empty((batchsize, max_length), dtype=torch.long).fill_(_TARGET_PAD)
             for i, l in enumerate(x_len):
                 padded_seqs[i, 0:l] = x[i][0:l]
@@ -78,15 +81,18 @@ def main():
     if args.model == 'simple_fc':
         net = SimpleFC(400, n_class).to(device)
     #TODO: add your model name here
+    elif args.model == 'vanilla_lstm':
+       net = vanillaLSTM(400, n_class=n_class).to(device)
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
     else:
         raise NotImplementedError
-    
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9)
+
+    # criterion = nn.CrossEntropyLoss()
+    criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
+    optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
     total_epoch = args.epoch
-    
+
     previous_dev = 0
     for epoch in range(total_epoch):
         start = datetime.now()
@@ -94,22 +100,22 @@ def main():
         print('Starting Epoch #{}, {} iterations'.format(epoch + 1, len(train_loader)))
         for i, data in enumerate(train_loader, 0):
             # get the inputs; data is a list of [inputs, labels]
-            inputs = data[0].to(device)
-            inputs_len = data[1]
-            labels = data[2].to(device)
+            inputs, inputs_len, labels = data
+            inputs = inputs.to(device)
+            labels = labels.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()
-
+            
             # forward + backward + optimize
-            outputs = net(inputs)
+            outputs = net(inputs, inputs_len)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
 
             # print statistics
             running_loss += loss.item()
-        
+
         delta_time = (datetime.now() - start).seconds / 60.0
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
             (epoch + 1, i + 1, running_loss / i, delta_time))
