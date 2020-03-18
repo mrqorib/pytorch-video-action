@@ -31,7 +31,29 @@ class vanillaLSTM(nn.Module):
 
     def forward(self, x, x_len):
         batchsize, timesteps, features = x.shape
-        packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
+        packed = pack_padded_sequence(x, x_len, batch_first=True)
+        # print(packed)
+        packed_output, (h_n, h_c) = self.rnn(packed)
+        lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
+        r_out2 = self.linear(lstm_out.view(-1, self.hidden_dim))
+
+        return F.log_softmax(r_out2, dim=1)
+
+class bidirectionalLSTM(nn.Module):
+    def __init__(self, input_dim=400, hidden_dim=64, n_class=2):
+        super(bidirectionalLSTM, self).__init__()
+        self.hidden_dim = hidden_dim
+        self.rnn = nn.LSTM(
+            input_size=input_dim,
+            hidden_size=hidden_dim//2,
+            batch_first=True,
+            num_layers=1,
+            bidirectional=True)
+        self.linear = nn.Linear(hidden_dim,n_class)
+
+    def forward(self, x, x_len):
+        batchsize, timesteps, features = x.shape
+        packed = pack_padded_sequence(x, x_len, batch_first=True)
         # print(packed)
         packed_output, (h_n, h_c) = self.rnn(packed)
         lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
