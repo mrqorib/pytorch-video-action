@@ -71,7 +71,10 @@ class VideoDataset(Dataset):
         self.split = split
         if self.part not in ["train", "dev", "test"]:
             ValueError("please provide the part only with train/dev/test")
-        split_file = os.path.join(annot_path, 'splits', 'new_splits', '{}.split{}.bundle'.format(part, split))
+        if part == 'test':
+            split_file = os.path.join(annot_path, 'splits', 'splits', '{}.split{}.bundle'.format(part, split))
+        else:
+            split_file = os.path.join(annot_path, 'splits', 'new_splits', '{}.split{}.bundle'.format(part, split))
         split_content = self._read_file(split_file, offset_start=1)
         self.filenames = self._get_filenames_from_split(split_content)
         
@@ -144,26 +147,63 @@ class VideoDataset(Dataset):
         features_filename = 'data-comp/{}-{}-features.npy'.format(self.part, self.split)
         labels_filename = 'data-comp/{}-{}-labels.npy'.format(self.part, self.split)
         os.makedirs("data-comp", exist_ok=True)
-        try:
-            self.features = np.load(features_filename, allow_pickle=True)
-            self.labels = np.load(labels_filename, allow_pickle=True)
-            print('Pickle files found. Loading from pickles')
-        except Exception as e:
-            print('Failed loading saved data \n  > ', e)
-            print('Loading the data, please wait...')
-            self.features = []
-            self.labels = []
-            for filename in self.filenames:
-                feature = self._load_feature_file(filename)
-                label = self._load_label_file(filename)
-                self.features.append(feature)
-                self.labels.append(label)
+        if self.part == 'test':
             try:
-                np.save(features_filename, self.features)
-                np.save(labels_filename, self.labels)
-                print('All features and labels are successfully saved')
+                self.features = np.load(features_filename, allow_pickle=True)
+                print('Pickle files found. Loading from pickles')
             except Exception as e:
-                print('[WARNING] Failed to save data as pickle\n  > ', e)
+                print('Failed loading saved data \n  > ', e)
+                print('Loading the data, please wait...')
+                self.features = []
+                for filename in self.filenames:
+                    feature = self._load_feature_file(filename)
+                    self.features.append(feature)
+                try:
+                    np.save(features_filename, self.features)
+                    print('All features are successfully saved')
+                except Exception as e:
+                    print('[WARNING] Failed to save data as pickle\n  > ', e)
+        else:
+            try:
+                self.features = np.load(features_filename, allow_pickle=True)
+                self.labels = np.load(labels_filename, allow_pickle=True)
+                print('Pickle files found. Loading from pickles')
+            except Exception as e:
+                print('Failed loading saved data \n  > ', e)
+                print('Loading the data, please wait...')
+                self.features = []
+                self.labels = []
+                for filename in self.filenames:
+                    feature = self._load_feature_file(filename)
+                    label = self._load_label_file(filename)
+                    self.features.append(feature)
+                    self.labels.append(label)
+                try:
+                    np.save(features_filename, self.features)
+                    np.save(labels_filename, self.labels)
+                    print('All features and labels are successfully saved')
+                except Exception as e:
+                    print('[WARNING] Failed to save data as pickle\n  > ', e)
+            print('Exclude out SIL')
+            self.features, self.labels = self._exclude_label(self.features, self.labels, 0)
+        
+    def _exclude_label(self, data_feat, data_labels, label):
+        """Exclude specified label from data_feat and data_labels
+            # Arguments
+                data_feat: a list of 2D tensor (no_frame, feat)
+                data_labels: 2D list 
+                label: a string or number, e.g. 0, 1, 2...
+            # Returns
+                data_feat_result: a list of 2D tensor (no_frame, feat)
+                data_labels_result: 2D list
+        """
+        data_feat_result = []
+        data_labels_result = []
+        for iter_index, file_content in enumerate(data_labels):
+            indexes = [i for i,x in enumerate(file_content) if str(x) == str(label)]
+            data_labels_result.append(list(np.delete(np.array(file_content), indexes)))
+            data_feat_result.append(torch.Tensor(np.delete(np.array(data_feat[iter_index]), indexes, axis=0)))
+        return data_feat_result, data_labels_result
 
 
     def _get_feature(self, idx):

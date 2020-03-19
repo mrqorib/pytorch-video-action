@@ -41,8 +41,9 @@ class vanillaLSTM(nn.Module):
 
 class BiLSTM(nn.Module):
     def __init__(self, input_dim=400, lstm_layer=2, hidden_dim_1=256,
-                 dropout_rate=0.5, hidden_dim_2=64, n_class=2):
+                 dropout_rate=0.5, hidden_dim_2=64, n_class=2, part='train'):
         super(BiLSTM, self).__init__()
+        self.part = part
         self.hidden_dim_1 = hidden_dim_1
         self.rnn = nn.LSTM(
             input_size=input_dim,
@@ -57,9 +58,12 @@ class BiLSTM(nn.Module):
 
     def forward(self, x, x_len):
         x = self.dropout_layer(x)
-        packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
-        packed_output, _ = self.rnn(packed)
-        lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
+        if self.part == 'test':
+            lstm_out, _ = self.rnn(x)
+        else:
+            packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
+            packed_output, _ = self.rnn(packed)
+            lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
         hidden_out = self.linear(lstm_out.view(-1, self.hidden_dim_1))
         dropout = self.dropout_layer(F.relu(hidden_out))
         class_out = self.output(dropout)
