@@ -164,7 +164,25 @@ class VideoDataset(Dataset):
                 print('All features and labels are successfully saved')
             except Exception as e:
                 print('[WARNING] Failed to save data as pickle\n  > ', e)
-
+        self.features, self.labels = self._exclude_label(self.features, self.labels, 0)
+        
+    def _exclude_label(self, data_feat, data_labels, label):
+        """Exclude specified label from data_feat and data_labels
+            # Arguments
+                data_feat: a list of 2D tensor (no_frame, feat)
+                data_labels: 2D list 
+                label: a string or number, e.g. 0, 1, 2...
+            # Returns
+                data_feat_result: a list of 2D tensor (no_frame, feat)
+                data_labels_result: 2D list
+        """
+        data_feat_result = []
+        data_labels_result = []
+        for iter_index, file_content in enumerate(data_labels):
+            indexes = [i for i,x in enumerate(file_content) if str(x) == str(label)]
+            data_labels_result.append(list(np.delete(np.array(file_content), indexes)))
+            data_feat_result.append(torch.Tensor(np.delete(np.array(data_feat[iter_index]), indexes, axis=0)))
+        return data_feat_result, data_labels_result
 
     def _get_feature(self, idx):
         if self.load_all:
