@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM #TODO: import your model here
+from networks import SimpleFC, vanillaLSTM, BiLSTM #TODO: import your model here
 
 
 _TARGET_PAD = -1
@@ -23,7 +23,7 @@ def parse_arguments():
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
-                        choices=['simple_fc', 'vanilla_lstm'], #TODO: add your model name here
+                        choices=['simple_fc', 'vanilla_lstm', 'bilstm'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument("--load_all", type=bool, nargs='?',
                         const=True, default=False,
@@ -80,9 +80,11 @@ def main():
 
     if args.model == 'simple_fc':
         net = SimpleFC(400, n_class).to(device)
-    #TODO: add your model name here
     elif args.model == 'vanilla_lstm':
        net = vanillaLSTM(400, n_class=n_class).to(device)
+    elif args.model == 'bilstm':
+       net = BiLSTM(400, n_class=n_class).to(device)
+    #TODO: add your model name here
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
     else:
@@ -114,7 +116,7 @@ def main():
             optimizer.step()
 
             # print statistics
-            running_loss += loss.item()
+            running_loss += loss.detach().item()
 
         delta_time = (datetime.now() - start).seconds / 60.0
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
