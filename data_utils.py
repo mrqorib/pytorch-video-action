@@ -251,6 +251,4 @@ class VideoDataset(Dataset):
         else:
             label = self._get_label(idx)
         label = torch.as_tensor(label, dtype=torch.long)
-        # label = label.type(torch.long)
-        print('actual data: ', (data, label))
         return (data, label)

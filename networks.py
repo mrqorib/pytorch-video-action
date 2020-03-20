@@ -57,7 +57,6 @@ class BiLSTM(nn.Module):
 
     def forward(self, x, x_len):
         x = self.dropout_layer(x)
-        print('inside model: ', x.shape)
         packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
         packed_output, _ = self.rnn(packed)
         lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)

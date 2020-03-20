@@ -65,8 +65,6 @@ def main():
             inputs, inputs_len = data
             inputs = inputs.to(device)
             # print('inputs: ', inputs)
-            print('in_len: ', inputs_len)
-            print('shape: ', inputs.shape)
             outputs = net(inputs, inputs_len)
             _, predicted = torch.max(outputs.data, 1)
             # get most frequent one
