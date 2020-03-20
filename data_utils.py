@@ -85,6 +85,14 @@ class VideoDataset(Dataset):
         self.ground_truth_dir = os.path.join(annot_path, 'groundTruth', 'groundTruth')
         self.data_dir = data_dir
 
+        if part == 'test':
+            print('Load Segment file')
+            segment_file = open('./segment.txt', 'r') 
+            segment_lines = segment_file.readlines()
+            for index, line in enumerate(segment_lines):
+                segment_lines[index] = line.replace('\n', '').split(' ')
+            self.segment_lines = segment_lines
+        
         self.load_all = load_all
         if self.load_all:
             print('Loading all {} data...'.format(part))
@@ -140,7 +148,7 @@ class VideoDataset(Dataset):
 
 
     def __len__(self):
-        return len(self.filenames)
+        return len(self.features)
 
     
     def _load_all_data(self):
@@ -149,20 +157,33 @@ class VideoDataset(Dataset):
         os.makedirs("data-comp", exist_ok=True)
         if self.part == 'test':
             try:
-                self.features = np.load(features_filename, allow_pickle=True)
+                features = np.load(features_filename, allow_pickle=True)
                 print('Pickle files found. Loading from pickles')
             except Exception as e:
                 print('Failed loading saved data \n  > ', e)
                 print('Loading the data, please wait...')
-                self.features = []
+                features = []
                 for filename in self.filenames:
                     feature = self._load_feature_file(filename)
-                    self.features.append(feature)
+                    features.append(feature)
                 try:
-                    np.save(features_filename, self.features)
+                    np.save(features_filename, features)
                     print('All features are successfully saved')
                 except Exception as e:
                     print('[WARNING] Failed to save data as pickle\n  > ', e)
+            
+            # slice and predict
+            processed_feature = []
+            for i, feature in enumerate(features):
+                segments = self.segment_lines[i]
+                for index, segment in enumerate(segments):
+                    if (index == len(segments) - 1):
+                        break
+                    start_frame = int(segments[index])
+                    end_frame = int(segments[index+1])
+                    processed_feature.append(feature[start_frame: end_frame, :])
+            self.features = processed_feature
+            self.labels = None
         else:
             try:
                 self.features = np.load(features_filename, allow_pickle=True)
@@ -231,4 +252,5 @@ class VideoDataset(Dataset):
             label = self._get_label(idx)
         label = torch.as_tensor(label, dtype=torch.long)
         # label = label.type(torch.long)
+        print('actual data: ', (data, label))
         return (data, label)

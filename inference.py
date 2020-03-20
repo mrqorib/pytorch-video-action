@@ -27,21 +27,30 @@ def main():
     os.makedirs("results", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print('Device used: {}'.format(device))
-    print('Load Segment file')
-    segment_file = open('./segment.txt', 'r') 
-    segment_lines = segment_file.readlines()
-    for index, line in enumerate(segment_lines):
-        segment_lines[index] = line.replace('\n', '').split(' ')
+        
+    def pad_batch(batch, batchsize=1):
+            batch = list(zip(*batch))
+            x, y = batch[0], batch[1]
+            x_len = [p.shape[0] for p in x]
+            max_length = max(x_len)
+            
+            padded_seqs = torch.zeros((batchsize, max_length, 400))
+            for i, l in enumerate(x_len):
+                padded_seqs[i, 0:l] = x[i][0:l]
+            
+            return padded_seqs, x_len
     test_dataset = VideoDataset(part='test', load_all=args.load_all, split=1)
     class_info = test_dataset.get_class_info()
     n_class = len(class_info['class_names'])
-    test_loader = DataLoader(test_dataset)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False,
+                        collate_fn=(lambda x: pad_batch(x, 1)))
+    
     if args.model == 'simple_fc':
        net = SimpleFC(400, n_class).to(device)
     elif args.model == 'vanilla_lstm':
        net = vanillaLSTM(400, n_class=n_class).to(device)
     elif args.model == 'bilstm':
-       net = BiLSTM(400, n_class=n_class, part='test').to(device)
+       net = BiLSTM(400, n_class=n_class).to(device)
     print('Load pretrained model: {}'.format(args.pretrained_model))
     try:
         model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(args.pretrained_model)))
@@ -54,20 +63,14 @@ def main():
     results = []
     for i, data in enumerate(test_loader, 0):
             inputs, inputs_len = data
-            # slice and predict
-            segments = segment_lines[i]
-            for index, segment in enumerate(segments):
-                if(len(segments) > 1):
-                    if (index == len(segments) - 1): break
-                    start_frame = int(segments[index])
-                    end_frame = int(segments[index+1])
-                    test_frames = inputs[:, start_frame: end_frame, :].to(device)
-                else:
-                    test_frames = inputs[:, int(segment), :].to(device)  
-                outputs = net(test_frames, inputs_len)
-                _, predicted = torch.max(outputs.data, 1)
-                # get most frequent one
-                results.append(torch.argmax(torch.bincount(predicted)).item())
+            inputs = inputs.to(device)
+            # print('inputs: ', inputs)
+            print('in_len: ', inputs_len)
+            print('shape: ', inputs.shape)
+            outputs = net(inputs, inputs_len)
+            _, predicted = torch.max(outputs.data, 1)
+            # get most frequent one
+            results.append(torch.argmax(torch.bincount(predicted)).item())
     result_path = './results/result_{}_{}'.format(args.pretrained_model ,datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
     print('Writing results to {}...'.format(result_path))
     results_df = pd.DataFrame(results)
