@@ -25,6 +25,8 @@ def parse_arguments():
     parser.add_argument('--model', dest='model', default='simple_fc',
                         choices=['simple_fc', 'vanilla_lstm', 'bilstm'], #TODO: add your model name here
                         help='Choose the type of model for learning')
+    parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
+                        help='pretrained_model file name')
     parser.add_argument("--load_all", type=bool, nargs='?',
                         const=True, default=False,
                         help='Load all data into RAM '\
@@ -90,6 +92,10 @@ def main():
     else:
         raise NotImplementedError
 
+    if args.pretrained_model is not None:
+        model_path = os.path.join('models', '{}.pth'.format(args.pretrained_model))
+        model_state_dict = torch.load(model_path)
+        net.load_state_dict(model_state_dict)
     # criterion = nn.CrossEntropyLoss()
     criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)

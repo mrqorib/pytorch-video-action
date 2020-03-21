@@ -220,10 +220,9 @@ class VideoDataset(Dataset):
         data_labels_result = []
         for iter_index, file_content in enumerate(data_labels):
             indexes = [i for i,x in enumerate(file_content) if str(x) == str(label)]
-            data_labels_result.append(list(np.delete(np.array(file_content), indexes)))
-            data_feat_result.append(torch.Tensor(np.delete(np.array(data_feat[iter_index]), indexes, axis=0)))
+            data_labels_result.append(np.delete(np.array(file_content), indexes))
+            data_feat_result.append(np.delete(np.array(data_feat[iter_index]), indexes, axis=0))
         return data_feat_result, data_labels_result
-
 
     def _get_feature(self, idx):
         if self.load_all:
@@ -243,10 +242,11 @@ class VideoDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
         
-        data = torch.as_tensor(self._get_feature(idx))
+        data = torch.tensor(self._get_feature(idx))
         if self.part == 'test':
             label = []
         else:
             label = self._get_label(idx)
-        label = torch.as_tensor(label, dtype=torch.long)
+        label = torch.tensor(label, dtype=torch.long)
+        # label = label.type(torch.long)
         return (data, label)
