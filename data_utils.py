@@ -170,18 +170,16 @@ class VideoDataset(Dataset):
                     np.save(features_filename, features)
                     print('All features are successfully saved')
                 except Exception as e:
-                    print('[WARNING] Failed to save data as pickle\n  > ', e)
-            
-            # slice and predict
+                    print('[WARNING] Failed to save data as pickle\n  > ', e)     
+            # slice
             processed_feature = []
             for i, feature in enumerate(features):
                 segments = self.segment_lines[i]
-                for index, segment in enumerate(segments):
-                    if (index == len(segments) - 1):
-                        break
-                    start_frame = int(segments[index])
-                    end_frame = int(segments[index+1])
-                    processed_feature.append(feature[start_frame: end_frame, :])
+                start_frame = int(segments[0])
+                end_frame = int(segments[len(segments) - 1])
+                processed_feature.append(feature[start_frame : end_frame, :])
+                # update self.segment_lines, eg 30 60 70 --> 0 30 40
+                self.segment_lines[i] = [int(segment_seq) - int(self.segment_lines[i][0]) for segment_seq in self.segment_lines[i]]
             self.features = processed_feature
             self.labels = None
         else:

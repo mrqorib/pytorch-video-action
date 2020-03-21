@@ -64,11 +64,18 @@ def main():
     for i, data in enumerate(test_loader, 0):
             inputs, inputs_len = data
             inputs = inputs.to(device)
-            # print('inputs: ', inputs)
             outputs = net(inputs, inputs_len)
             _, predicted = torch.max(outputs.data, 1)
-            # get most frequent one
-            results.append(torch.argmax(torch.bincount(predicted)).item())
+            segments = test_dataset.segment_lines[i]
+            # break the predicted labels to segments and take max frequency
+            for index, segment in enumerate(segments):
+                if (index == len(segments) - 1):
+                    break
+                start_frame = int(segments[index])
+                end_frame = int(segments[index+1])
+                predicted_labels = predicted[start_frame: end_frame]
+                # get most frequent one
+                results.append(torch.argmax(torch.bincount(predicted_labels)).item())
     result_path = './results/result_{}_{}'.format(args.pretrained_model ,datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
     print('Writing results to {}...'.format(result_path))
     results_df = pd.DataFrame(results)
