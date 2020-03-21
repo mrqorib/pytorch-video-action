@@ -39,25 +39,30 @@ class vanillaLSTM(nn.Module):
 
         return F.log_softmax(r_out2, dim=1)
 
-class bidirectionalLSTM(nn.Module):
-    def __init__(self, input_dim=400, hidden_dim=64, n_class=2):
-        super(bidirectionalLSTM, self).__init__()
-        self.hidden_dim = hidden_dim
+class BiLSTM(nn.Module):
+    def __init__(self, input_dim=400, lstm_layer=2, hidden_dim_1=256,
+                 dropout_rate=0.5, hidden_dim_2=64, n_class=2):
+        super(BiLSTM, self).__init__()
+        self.hidden_dim_1 = hidden_dim_1
         self.rnn = nn.LSTM(
             input_size=input_dim,
-            hidden_size=hidden_dim//2,
+            hidden_size=hidden_dim_1 // 2,
             batch_first=True,
-            num_layers=1,
-            bidirectional=True)
-        self.linear = nn.Linear(hidden_dim,n_class)
+            bidirectional=True,
+            dropout=dropout_rate,
+            num_layers=lstm_layer)
+        self.linear = nn.Linear(hidden_dim_1, hidden_dim_2)
+        self.dropout_layer = nn.Dropout(p=dropout_rate)
+        self.output = nn.Linear(hidden_dim_2, n_class)
 
     def forward(self, x, x_len):
-        batchsize, timesteps, features = x.shape
-        packed = pack_padded_sequence(x, x_len, batch_first=True)
-        # print(packed)
-        packed_output, (h_n, h_c) = self.rnn(packed)
+        x = self.dropout_layer(x)
+        packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
+        packed_output, _ = self.rnn(packed)
         lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
-        r_out2 = self.linear(lstm_out.view(-1, self.hidden_dim))
+        hidden_out = self.linear(lstm_out.view(-1, self.hidden_dim_1))
+        dropout = self.dropout_layer(F.relu(hidden_out))
+        class_out = self.output(dropout)
 
         return F.log_softmax(class_out, dim=1)
 

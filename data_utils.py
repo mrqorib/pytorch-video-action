@@ -145,26 +145,44 @@ class VideoDataset(Dataset):
         labels_filename = 'data-comp/{}-{}-labels.npy'.format(self.part, self.split)
         os.makedirs("data-comp", exist_ok=True)
         try:
-            self.features = np.load(features_filename, allow_pickle=True)
-            self.labels = np.load(labels_filename, allow_pickle=True)
+            features = np.load(features_filename, allow_pickle=True)
+            labels = np.load(labels_filename, allow_pickle=True)
             print('Pickle files found. Loading from pickles')
         except Exception as e:
             print('Failed loading saved data \n  > ', e)
             print('Loading the data, please wait...')
-            self.features = []
-            self.labels = []
+            features = []
+            labels = []
             for filename in self.filenames:
                 feature = self._load_feature_file(filename)
                 label = self._load_label_file(filename)
-                self.features.append(feature)
-                self.labels.append(label)
+                features.append(feature)
+                labels.append(label)
             try:
-                np.save(features_filename, self.features)
-                np.save(labels_filename, self.labels)
+                np.save(features_filename, features)
+                np.save(labels_filename, labels)
                 print('All features and labels are successfully saved')
             except Exception as e:
                 print('[WARNING] Failed to save data as pickle\n  > ', e)
-
+        self.features, self.labels = self._exclude_label(features, labels, 0)
+        
+    def _exclude_label(self, data_feat, data_labels, label):
+        """Exclude specified label from data_feat and data_labels
+            # Arguments
+                data_feat: a list of 2D tensor (no_frame, feat)
+                data_labels: 2D list 
+                label: a string or number, e.g. 0, 1, 2...
+            # Returns
+                data_feat_result: a list of 2D tensor (no_frame, feat)
+                data_labels_result: 2D list
+        """
+        data_feat_result = []
+        data_labels_result = []
+        for iter_index, file_content in enumerate(data_labels):
+            indexes = [i for i,x in enumerate(file_content) if str(x) == str(label)]
+            data_labels_result.append(np.delete(np.array(file_content), indexes))
+            data_feat_result.append(np.delete(np.array(data_feat[iter_index]), indexes, axis=0))
+        return data_feat_result, data_labels_result
 
     def _get_feature(self, idx):
         if self.load_all:
@@ -184,11 +202,11 @@ class VideoDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
         
-        data = torch.as_tensor(self._get_feature(idx))
+        data = torch.tensor(self._get_feature(idx))
         if self.part == 'test':
             label = []
         else:
             label = self._get_label(idx)
-        label = torch.as_tensor(label, dtype=torch.long)
+        label = torch.tensor(label, dtype=torch.long)
         # label = label.type(torch.long)
         return (data, label)

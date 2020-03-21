@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM, bidirectionalLSTM #TODO: import your model here
+from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU #TODO: import your model here
 
 
 _TARGET_PAD = -1
@@ -25,6 +25,8 @@ def parse_arguments():
     parser.add_argument('--model', dest='model', default='simple_fc',
                         choices=['simple_fc', 'vanilla_lstm', 'bilstm', 'bigru'], #TODO: add your model name here
                         help='Choose the type of model for learning')
+    parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
+                        help='pretrained_model file name')
     parser.add_argument("--load_all", type=bool, nargs='?',
                         const=True, default=False,
                         help='Load all data into RAM '\
@@ -80,7 +82,6 @@ def main():
 
     if args.model == 'simple_fc':
         net = SimpleFC(400, n_class).to(device)
-    #TODO: add your model name here
     elif args.model == 'vanilla_lstm':
        net = vanillaLSTM(400, n_class=n_class).to(device)
     elif args.model == 'bilstm':
@@ -93,6 +94,10 @@ def main():
     else:
         raise NotImplementedError
 
+    if args.pretrained_model is not None:
+        model_path = os.path.join('models', '{}.pth'.format(args.pretrained_model))
+        model_state_dict = torch.load(model_path)
+        net.load_state_dict(model_state_dict)
     # criterion = nn.CrossEntropyLoss()
     criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
@@ -119,7 +124,7 @@ def main():
             optimizer.step()
 
             # print statistics
-            running_loss += loss.item()
+            running_loss += loss.detach().item()
 
         delta_time = (datetime.now() - start).seconds / 60.0
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
