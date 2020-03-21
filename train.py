@@ -23,7 +23,7 @@ def parse_arguments():
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
-                        choices=['simple_fc', 'vanilla_lstm', 'bidirectional_lstm'], #TODO: add your model name here
+                        choices=['simple_fc', 'vanilla_lstm', 'bilstm', 'bigru'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument("--load_all", type=bool, nargs='?',
                         const=True, default=False,
@@ -83,8 +83,11 @@ def main():
     #TODO: add your model name here
     elif args.model == 'vanilla_lstm':
        net = vanillaLSTM(400, n_class=n_class).to(device)
-    elif args.model == 'bidirectional_lstm':
-       net = bidirectionalLSTM(400, n_class=n_class).to(device)
+    elif args.model == 'bilstm':
+       net = BiLSTM(400, n_class=n_class).to(device)
+    elif args.model == 'bigru':
+       net = BiGRU(400, n_class=n_class).to(device)
+    #TODO: add your model name here
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
     else:
