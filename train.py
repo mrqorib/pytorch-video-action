@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM, BiLSTM #TODO: import your model here
+from networks import SimpleFC, vanillaLSTM, BiLSTM, MultiHeadAttention #TODO: import your model here
 
 
 _TARGET_PAD = -1
@@ -23,7 +23,7 @@ def parse_arguments():
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
-                        choices=['simple_fc', 'vanilla_lstm', 'bilstm'], #TODO: add your model name here
+                        choices=['simple_fc', 'vanilla_lstm', 'bilstm', 'attn'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
@@ -31,6 +31,9 @@ def parse_arguments():
                         const=True, default=False,
                         help='Load all data into RAM '\
                             '(make sure you have enough free Memory).')
+    # attn model params
+    parser.add_argument('--attn_head', dest='attn_head', type=int, default=4,
+                        help='Number of head in MultiHeadAttention')
     return parser.parse_args()
 
 def evaluate(model, dev_dataset, device):
@@ -83,9 +86,11 @@ def main():
     if args.model == 'simple_fc':
         net = SimpleFC(400, n_class).to(device)
     elif args.model == 'vanilla_lstm':
-       net = vanillaLSTM(400, n_class=n_class).to(device)
+        net = vanillaLSTM(400, n_class=n_class).to(device)
     elif args.model == 'bilstm':
-       net = BiLSTM(400, n_class=n_class).to(device)
+        net = BiLSTM(400, n_class=n_class).to(device)
+    elif args.model == 'attn':
+        net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
     #TODO: add your model name here
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
