@@ -67,7 +67,7 @@ class BiLSTM(nn.Module):
         return F.log_softmax(class_out, dim=1)
 
 class BiGRU(nn.Module):
-    def __init__(self, input_dim=400, gru_layer=2, hidden_dim_1=256,
+    def __init__(self, input_dim=400, gru_layer=4, hidden_dim_1=256,
                  dropout_rate=0.5, hidden_dim_2=64, n_class=2):
         super(BiGRU, self).__init__()
         self.hidden_dim_1 = hidden_dim_1
@@ -80,15 +80,15 @@ class BiGRU(nn.Module):
             num_layers=gru_layer)
         self.linear = nn.Linear(hidden_dim_1, hidden_dim_2)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
-        self.output = nn.Linear(hidden_dim_2, n_class)
+        self.output = nn.Linear(hidden_dim_1, n_class)
 
     def forward(self, x, x_len):
         x = self.dropout_layer(x)
         packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
         packed_output, _ = self.rnn(packed)
         lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
-        hidden_out = self.linear(lstm_out.view(-1, self.hidden_dim_1))
-        dropout = self.dropout_layer(F.relu(hidden_out))
-        class_out = self.output(dropout)
+        class_out = self.output(lstm_out.view(-1, self.hidden_dim_1))
+        # dropout = self.dropout_layer(F.relu(hidden_out))
+        # class_out = self.output(dropout)
 
         return F.log_softmax(class_out, dim=1)
