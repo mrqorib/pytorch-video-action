@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM, BiLSTM #TODO: import your model here
+from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU #TODO: import your model here
 import pandas as pd
 
 def parse_arguments():
@@ -52,6 +52,8 @@ def main():
            net = vanillaLSTM(400, n_class=n_class).to(device)
         elif model == 'bilstm':
            net = BiLSTM(400, n_class=n_class).to(device)
+        elif model == 'bigru':
+           net = BiGRU(400, n_class=n_class).to(device)
         try:
             model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)))
             net.load_state_dict(model_state_dict)
