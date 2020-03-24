@@ -68,16 +68,17 @@ class BiLSTM(nn.Module):
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, input_dim=400, num_heads=4,
-                 dropout_rate=0.5, n_class=2):
+                 dropout_rate=0.3, n_class=2):
         super().__init__()
         self.input_dim = input_dim
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.attention = nn.MultiheadAttention(input_dim, num_heads, dropout_rate)
         self.output = nn.Linear(input_dim, n_class)
-    
+
     def forward(self, x, x_len):
-        x = self.dropout_layer(x)
+        # x = self.dropout_layer(x)
         x = x.transpose(0,1)
         x, _ = self.attention(x, x, x)
-        x = self.output(x.view(-1, self.input_dim))
+        x = x.transpose(0,1)
+        x = self.output(x.reshape(-1, self.input_dim))
         return F.log_softmax(x, dim=1)
