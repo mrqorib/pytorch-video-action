@@ -33,6 +33,21 @@ def parse_arguments():
                             '(make sure you have enough free Memory).')
     return parser.parse_args()
 
+def get_label_length_seq(content):
+    label_seq = []
+    length_seq = []
+    start = 0
+    length_seq.append(0)
+    for i in range(len(content)):
+        if content[i] != content[start]:
+            label_seq.append(content[start])
+            length_seq.append(i)
+            start = i
+    label_seq.append(content[start])
+    length_seq.append(len(content))
+
+    return label_seq, length_seq
+
 def evaluate(model, dev_dataset, device):
     correct = 0
     total = 0
@@ -40,12 +55,22 @@ def evaluate(model, dev_dataset, device):
         for data in dev_dataset:
             inputs, inputs_len, labels = data
             inputs = inputs.to(device)
-            labels = labels.to(device)
+            label_seq, length_seq = get_label_length_seq(labels)
 
             outputs = model(inputs, inputs_len)
             _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+            for index, segment in enumerate(length_seq):
+                if (index == len(length_seq) - 1):
+                    break
+                start_frame = int(length_seq[index])
+                end_frame = int(length_seq[index+1])
+                predicted_labels = predicted[start_frame: end_frame]
+                # get most frequent one
+                predicted_label = int(torch.argmax(torch.bincount(predicted_labels)).item())
+                if label_seq[index] == predicted_label: 
+                    correct += 1
+            
+            total += len(label_seq)
 
     return (100 * correct / total)
 
