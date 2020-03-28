@@ -49,16 +49,22 @@ def get_label_length_seq(content):
     return label_seq, length_seq
 
 def evaluate(model, dev_dataset, device):
-    correct = 0
-    total = 0
+    correct_segment = 0
+    total_segment = 0
+    correct_frame = 0
+    total_frame = 0
     with torch.no_grad():
         for data in dev_dataset:
             inputs, inputs_len, labels = data
             inputs = inputs.to(device)
+            labels = labels.to(device)
             label_seq, length_seq = get_label_length_seq(labels)
 
             outputs = model(inputs, inputs_len)
             _, predicted = torch.max(outputs.data, 1)
+            total_frame += labels.size(0)
+            correct_frame += (predicted == labels).sum().item()
+            
             for index, segment in enumerate(length_seq):
                 if (index == len(length_seq) - 1):
                     break
@@ -68,11 +74,13 @@ def evaluate(model, dev_dataset, device):
                 # get most frequent one
                 predicted_label = int(torch.argmax(torch.bincount(predicted_labels)).item())
                 if label_seq[index] == predicted_label: 
-                    correct += 1
+                    correct_segment += 1
             
-            total += len(label_seq)
+            total_segment += len(label_seq)
 
-    return (100 * correct / total)
+    accuracy_frame = (100 * correct_frame / total_frame)
+    accuracy_segment = (100 * correct_segment / total_segment)
+    return accuracy_segment, accuracy_frame
 
 def main():
     args = parse_arguments()
@@ -155,8 +163,9 @@ def main():
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
             (epoch + 1, i + 1, running_loss / i, delta_time))
         running_loss = 0.0
-        dev_acc = evaluate(net, dev_loader, device)
-        print('Dev accuracy: {:.3f}'.format(dev_acc))
+        dev_acc, frame_acc = evaluate(net, dev_loader, device)
+        print('Dev accuracy by frame: {:.3f}'.format(frame_acc))
+        print('Dev accuracy by segment: {:.3f}'.format(dev_acc))
         if dev_acc > previous_dev:
             print('{} ==> {}'.format(dev_acc, previous_dev))
             model_path = 'models/{}_{:.2f}_dev.pth'.format(args.model, dev_acc)
