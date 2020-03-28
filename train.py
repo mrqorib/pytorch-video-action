@@ -88,7 +88,7 @@ def main():
     elif args.model == 'vanilla_lstm':
         net = vanillaLSTM(400, n_class=n_class).to(device)
     elif args.model == 'bilstm':
-       net = BiLSTM(400, n_class=n_class).to(device)
+        net = BiLSTM(400, n_class=n_class).to(device)
     elif args.model == 'bigru':
        net = BiGRU(400, n_class=n_class).to(device)
     elif args.model == 'attn':

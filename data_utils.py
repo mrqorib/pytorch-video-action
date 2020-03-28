@@ -66,7 +66,7 @@ class BucketBatchSampler(Sampler):
 class VideoDataset(Dataset):
 
 
-    def __init__(self, data_dir='./data', annot_path='.', part='train', split=0, load_all=False):
+    def __init__(self, data_dir='./data', annot_path='.', part='train', split=3, load_all=False):
         self.part = part.lower().strip()
         self.split = split
         if self.part not in ["train", "dev", "test"]:
