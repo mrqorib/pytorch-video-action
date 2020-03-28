@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU, MultiHeadAttention #TODO: import your model here
+from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU, MultiHeadAttention, MultiStageModel #TODO: import your model here
 
 
 _TARGET_PAD = -1
@@ -23,7 +23,7 @@ def parse_arguments():
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
-                        choices=['simple_fc', 'vanilla_lstm', 'bilstm', 'bigru', 'attn'], #TODO: add your model name here
+                        choices=['simple_fc', 'vanilla_lstm', 'bilstm', 'bigru', 'attn', 'ms_tcn'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
@@ -93,6 +93,8 @@ def main():
        net = BiGRU(400, n_class=n_class).to(device)
     elif args.model == 'attn':
         net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
+    elif args.model == 'ms_tcn':
+        net = MultiStageModel(400, n_class=n_class).to(device)
     #TODO: add your model name here
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
@@ -104,7 +106,7 @@ def main():
         model_state_dict = torch.load(model_path)
         net.load_state_dict(model_state_dict)
     # criterion = nn.CrossEntropyLoss()
-    criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
+    criterion = nn.CrossEntropyLoss(ignore_index=_TARGET_PAD)
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
     total_epoch = args.epoch
 
