@@ -29,7 +29,8 @@ def parse_arguments():
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
                         choices=['simple_fc', 'vanilla_lstm', 'bilstm',
-                                 'bilstm_lm', 'attn', 'win_attn'], #TODO: add your model name here
+                                 'bilstm_lm', 'attn', 'win_attn',
+                                 'bigru', 'attn', 'ms_tcn'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
@@ -71,13 +72,13 @@ def main():
     args = parse_arguments()
     os.makedirs("models", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    
+
     def pad_batch(batch, batchsize=args.batchsize):
             batch = list(zip(*batch))
             x, y = batch[0], batch[1]
             x_len = [p.shape[0] for p in x]
             max_length = max(x_len)
-            
+
             padded_seqs = torch.zeros((batchsize, max_length, 400))
             padded_target = torch.empty((batchsize, max_length), dtype=torch.long).fill_(_TARGET_PAD)
             for i, l in enumerate(x_len):
@@ -116,10 +117,15 @@ def main():
                     dropout_rate=args.lstm_dropout,
                     hidden_dim_2=args.lstm_hidden2,
                     n_class=n_class).to(device)
-    elif args.model == 'attn':
-        net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
     elif args.model == 'win_attn':
         net = ExpWindowAttention(400, args.attn_head, n_class=n_class).to(device)
+       net = BiLSTM(400, n_class=n_class).to(device)
+    elif args.model == 'bigru':
+       net = BiGRU(400, n_class=n_class).to(device)
+    elif args.model == 'attn':
+        net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
+    elif args.model == 'ms_tcn':
+        net = MultiStageModel(400, n_class=n_class).to(device)
     #TODO: add your model name here
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
@@ -131,7 +137,10 @@ def main():
         model_state_dict = torch.load(model_path)
         net.load_state_dict(model_state_dict)
     # criterion = nn.CrossEntropyLoss()
-    criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
+    if args.model == 'ms_tcn':
+        criterion = nn.CrossEntropyLoss(ignore_index=_TARGET_PAD)
+    else:
+        criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_step_size, gamma=args.lr_gamma)
     total_epoch = args.epoch
@@ -149,7 +158,7 @@ def main():
 
             # zero the parameter gradients
             optimizer.zero_grad()
-            
+
             # forward + backward + optimize
             outputs = net(inputs, inputs_len)
             # print('outside: ', outputs.shape)
