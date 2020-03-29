@@ -126,19 +126,21 @@ class BiLSTMWithLM(nn.Module):
         return final_output
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, input_dim=400, num_heads=4,
-                 dropout_rate=0.5, n_class=2):
+    def __init__(self, input_dim=400, num_heads=4, hidden_dim=256,
+                 dropout_rate=0.3, n_class=2):
         super().__init__()
         self.input_dim = input_dim
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.attention = nn.MultiheadAttention(input_dim, num_heads, dropout_rate)
-        self.output = nn.Linear(input_dim, n_class)
-    
+        self.hidden1 = nn.Linear(input_dim, hidden_dim)
+        self.output = nn.Linear(hidden_dim, n_class)
+
     def forward(self, x, x_len):
         # x = self.dropout_layer(x)
         x = x.transpose(0,1)
         x, _ = self.attention(x, x, x)
         x = x.transpose(0,1).contiguous().view(-1, self.input_dim)
+        x = self.hidden1(F.relu(x))
         x = self.output(F.relu(x))
         return F.log_softmax(x, dim=1)
 
