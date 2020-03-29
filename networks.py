@@ -196,7 +196,7 @@ class ExpWindowAttention(nn.Module):
             start_frame = f - self.window_size
             end_frame = f + self.window_size + 1
             context = x[start_frame:end_frame, :, :]
-            print(context.shape)
+            # print(context.shape)
             feat, _ = self.attention(context, context, context)
             feat = feat[self.window_size,:,:]
             assert feat.shape == (batchsize, input_dim)
