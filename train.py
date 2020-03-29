@@ -119,7 +119,6 @@ def main():
                     n_class=n_class).to(device)
     elif args.model == 'win_attn':
         net = ExpWindowAttention(400, args.attn_head, n_class=n_class).to(device)
-       net = BiLSTM(400, n_class=n_class).to(device)
     elif args.model == 'bigru':
        net = BiGRU(400, n_class=n_class).to(device)
     elif args.model == 'attn':
