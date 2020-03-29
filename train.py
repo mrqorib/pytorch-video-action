@@ -7,8 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM, BiLSTM, MultiHeadAttention #TODO: import your model here
-
+from networks import *
 
 _TARGET_PAD = -1
 
@@ -23,7 +22,8 @@ def parse_arguments():
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
-                        choices=['simple_fc', 'vanilla_lstm', 'bilstm', 'attn'], #TODO: add your model name here
+                        choices=['simple_fc', 'vanilla_lstm', 'bilstm',
+                                 'bilstm_lm', 'attn', 'win_attn'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
@@ -34,6 +34,15 @@ def parse_arguments():
     # attn model params
     parser.add_argument('--attn_head', dest='attn_head', type=int, default=4,
                         help='Number of head in MultiHeadAttention')
+    # lstm model params
+    parser.add_argument('--lstm_layer', dest='lstm_layer', type=int, default=2,
+                        help='Number of LSTM layer')
+    parser.add_argument('--lstm_dropout', dest='lstm_dropout', type=float, default=0.5,
+                        help='Dropout rate of LSTM layer')
+    parser.add_argument('--lstm_hidden1', dest='lstm_hidden1', type=int, default=256,
+                        help='Number of LSTM Hidden neurons')
+    parser.add_argument('--lstm_hidden2', dest='lstm_hidden2', type=int, default=2,
+                        help='Number of linear hidden neuron')
     return parser.parse_args()
 
 def evaluate(model, dev_dataset, device):
@@ -88,9 +97,23 @@ def main():
     elif args.model == 'vanilla_lstm':
         net = vanillaLSTM(400, n_class=n_class).to(device)
     elif args.model == 'bilstm':
-        net = BiLSTM(400, n_class=n_class).to(device)
+        net = BiLSTM(input_dim=400,
+                    lstm_layer=args.lstm_layer,
+                    hidden_dim_1=args.lstm_hidden1,
+                    dropout_rate=args.lstm_dropout,
+                    hidden_dim_2=args.lstm_hidden2,
+                    n_class=n_class).to(device)
+    elif args.model == 'bilstm_lm':
+        net = BiLSTMWithLM(input_dim=400,
+                    lstm_layer=args.lstm_layer,
+                    hidden_dim_1=args.lstm_hidden1,
+                    dropout_rate=args.lstm_dropout,
+                    hidden_dim_2=args.lstm_hidden2,
+                    n_class=n_class).to(device)
     elif args.model == 'attn':
         net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
+    elif args.model == 'win_attn':
+        net = ExpWindowAttention(400, args.attn_head, n_class=n_class).to(device)
     #TODO: add your model name here
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
@@ -122,6 +145,7 @@ def main():
             
             # forward + backward + optimize
             outputs = net(inputs, inputs_len)
+            # print('outside: ', outputs.shape)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
