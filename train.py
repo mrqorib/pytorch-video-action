@@ -19,9 +19,9 @@ def parse_arguments():
                         help='epoch')
     parser.add_argument('--lr', dest='lr', type=float, default=0.001,
                         help='learning rate')
-    parser.add_argument('--lr_step_size', dest='lr', type=int, default=30,
+    parser.add_argument('--lr_step_size', dest='lr_step_size', type=int, default=30,
                         help='learning rate')
-    parser.add_argument('--lr_gamma', dest='lr', type=float, default=1,
+    parser.add_argument('--lr_gamma', dest='lr_gamma', type=float, default=1,
                         help='learning rate')
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
