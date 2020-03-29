@@ -71,7 +71,10 @@ class VideoDataset(Dataset):
         self.split = split
         if self.part not in ["train", "dev", "test"]:
             ValueError("please provide the part only with train/dev/test")
-        split_file = os.path.join(annot_path, 'splits', 'new_splits', '{}.split{}.bundle'.format(part, split))
+        if part == 'test':
+            split_file = os.path.join(annot_path, 'splits', 'splits', '{}.split{}.bundle'.format(part, split))
+        else:
+            split_file = os.path.join(annot_path, 'splits', 'new_splits', '{}.split{}.bundle'.format(part, split))
         split_content = self._read_file(split_file, offset_start=1)
         self.filenames = self._get_filenames_from_split(split_content)
         
@@ -82,6 +85,14 @@ class VideoDataset(Dataset):
         self.ground_truth_dir = os.path.join(annot_path, 'groundTruth', 'groundTruth')
         self.data_dir = data_dir
 
+        if part == 'test':
+            print('Load Segment file')
+            segment_file = open('./segment.txt', 'r') 
+            segment_lines = segment_file.readlines()
+            for index, line in enumerate(segment_lines):
+                segment_lines[index] = line.replace('\n', '').split(' ')
+            self.segment_lines = segment_lines
+        
         self.load_all = load_all
         if self.load_all:
             print('Loading all {} data...'.format(part))
@@ -137,34 +148,63 @@ class VideoDataset(Dataset):
 
 
     def __len__(self):
-        return len(self.filenames)
+        return len(self.features)
 
     
     def _load_all_data(self):
         features_filename = 'data-comp/{}-{}-features.npy'.format(self.part, self.split)
         labels_filename = 'data-comp/{}-{}-labels.npy'.format(self.part, self.split)
         os.makedirs("data-comp", exist_ok=True)
-        try:
-            features = np.load(features_filename, allow_pickle=True)
-            labels = np.load(labels_filename, allow_pickle=True)
-            print('Pickle files found. Loading from pickles')
-        except Exception as e:
-            print('Failed loading saved data \n  > ', e)
-            print('Loading the data, please wait...')
-            features = []
-            labels = []
-            for filename in self.filenames:
-                feature = self._load_feature_file(filename)
-                label = self._load_label_file(filename)
-                features.append(feature)
-                labels.append(label)
+        if self.part == 'test':
             try:
-                np.save(features_filename, features)
-                np.save(labels_filename, labels)
-                print('All features and labels are successfully saved')
+                features = np.load(features_filename, allow_pickle=True)
+                print('Pickle files found. Loading from pickles')
             except Exception as e:
-                print('[WARNING] Failed to save data as pickle\n  > ', e)
-        self.features, self.labels = self._exclude_label(features, labels, 0)
+                print('Failed loading saved data \n  > ', e)
+                print('Loading the data, please wait...')
+                features = []
+                for filename in self.filenames:
+                    feature = self._load_feature_file(filename)
+                    features.append(feature)
+                try:
+                    np.save(features_filename, features)
+                    print('All features are successfully saved')
+                except Exception as e:
+                    print('[WARNING] Failed to save data as pickle\n  > ', e)     
+            # slice
+            processed_feature = []
+            for i, feature in enumerate(features):
+                segments = self.segment_lines[i]
+                start_frame = int(segments[0])
+                end_frame = int(segments[len(segments) - 1])
+                processed_feature.append(feature[start_frame : end_frame, :])
+                # update self.segment_lines, eg 30 60 70 --> 0 30 40
+                self.segment_lines[i] = [int(segment_seq) - int(self.segment_lines[i][0]) for segment_seq in self.segment_lines[i]]
+            self.features = processed_feature
+            self.labels = None
+        else:
+            try:
+                self.features = np.load(features_filename, allow_pickle=True)
+                self.labels = np.load(labels_filename, allow_pickle=True)
+                print('Pickle files found. Loading from pickles')
+            except Exception as e:
+                print('Failed loading saved data \n  > ', e)
+                print('Loading the data, please wait...')
+                self.features = []
+                self.labels = []
+                for filename in self.filenames:
+                    feature = self._load_feature_file(filename)
+                    label = self._load_label_file(filename)
+                    self.features.append(feature)
+                    self.labels.append(label)
+                try:
+                    np.save(features_filename, self.features)
+                    np.save(labels_filename, self.labels)
+                    print('All features and labels are successfully saved')
+                except Exception as e:
+                    print('[WARNING] Failed to save data as pickle\n  > ', e)
+            print('Exclude out SIL')
+            self.features, self.labels = self._exclude_label(self.features, self.labels, 0)
         
     def _exclude_label(self, data_feat, data_labels, label):
         """Exclude specified label from data_feat and data_labels

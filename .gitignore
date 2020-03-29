@@ -5,3 +5,4 @@ groundTruth/
 .ipynb_checkpoints/
 models/
 logs/
+results/
