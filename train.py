@@ -17,6 +17,8 @@ def parse_arguments():
                         default=1, help='learning minibatch size')
     parser.add_argument('--epoch', dest='epoch', type=int, default=10,
                         help='epoch')
+    parser.add_argument('--split', dest='split', type=int, default=0,
+                        help='split')
     parser.add_argument('--lr', dest='lr', type=float, default=0.001,
                         help='learning rate')
     parser.add_argument('--lr_step_size', dest='lr_step_size', type=int, default=30,
@@ -85,8 +87,8 @@ def main():
             target = torch.flatten(padded_target)
             return padded_seqs, x_len, target
     
-    train_dataset = VideoDataset(part='train', load_all=args.load_all)
-    dev_dataset = VideoDataset(part='dev', load_all=args.load_all)
+    train_dataset = VideoDataset(part='train', load_all=args.load_all, split=args.split)
+    dev_dataset = VideoDataset(part='dev', load_all=args.load_all, split=args.split)
     class_info = train_dataset.get_class_info()
     bucket_batch_sampler = BucketBatchSampler(train_dataset.features, args.batchsize)
     train_loader = DataLoader(train_dataset, num_workers=args.num_workers,
