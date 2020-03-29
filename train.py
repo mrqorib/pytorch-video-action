@@ -19,6 +19,10 @@ def parse_arguments():
                         help='epoch')
     parser.add_argument('--lr', dest='lr', type=float, default=0.001,
                         help='learning rate')
+    parser.add_argument('--lr_step_size', dest='lr', type=int, default=30,
+                        help='learning rate')
+    parser.add_argument('--lr_gamma', dest='lr', type=float, default=1,
+                        help='learning rate')
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
@@ -127,6 +131,7 @@ def main():
     # criterion = nn.CrossEntropyLoss()
     criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_step_size, gamma=args.lr_gamma)
     total_epoch = args.epoch
 
     previous_dev = 0
@@ -152,6 +157,9 @@ def main():
 
             # print statistics
             running_loss += loss.detach().item()
+
+            if args.lr_step_size > 0 and args.lr_gamma < 1:
+                lr_scheduler.step()
 
         delta_time = (datetime.now() - start).seconds / 60.0
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
