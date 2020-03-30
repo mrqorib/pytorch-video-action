@@ -7,8 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU #TODO: import your model here
-
+from networks import *
 
 _TARGET_PAD = -1
 
@@ -18,12 +17,20 @@ def parse_arguments():
                         default=1, help='learning minibatch size')
     parser.add_argument('--epoch', dest='epoch', type=int, default=10,
                         help='epoch')
+    parser.add_argument('--split', dest='split', type=int, default=0,
+                        help='split')
     parser.add_argument('--lr', dest='lr', type=float, default=0.001,
+                        help='learning rate')
+    parser.add_argument('--lr_step_size', dest='lr_step_size', type=int, default=30,
+                        help='learning rate')
+    parser.add_argument('--lr_gamma', dest='lr_gamma', type=float, default=1,
                         help='learning rate')
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
     parser.add_argument('--model', dest='model', default='simple_fc',
-                        choices=['simple_fc', 'vanilla_lstm', 'bilstm', 'bigru'], #TODO: add your model name here
+                        choices=['simple_fc', 'vanilla_lstm', 'bilstm',
+                                 'bilstm_lm', 'attn', 'win_attn',
+                                 'bigru', 'attn', 'ms_tcn'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
@@ -31,6 +38,18 @@ def parse_arguments():
                         const=True, default=False,
                         help='Load all data into RAM '\
                             '(make sure you have enough free Memory).')
+    # attn model params
+    parser.add_argument('--attn_head', dest='attn_head', type=int, default=4,
+                        help='Number of head in MultiHeadAttention')
+    # lstm model params
+    parser.add_argument('--lstm_layer', dest='lstm_layer', type=int, default=2,
+                        help='Number of LSTM layer')
+    parser.add_argument('--lstm_dropout', dest='lstm_dropout', type=float, default=0.5,
+                        help='Dropout rate of LSTM layer')
+    parser.add_argument('--lstm_hidden1', dest='lstm_hidden1', type=int, default=256,
+                        help='Number of LSTM Hidden neurons')
+    parser.add_argument('--lstm_hidden2', dest='lstm_hidden2', type=int, default=2,
+                        help='Number of linear hidden neuron')
     return parser.parse_args()
 
 def get_label_length_seq(content):
@@ -101,9 +120,9 @@ def main():
 
             target = torch.flatten(padded_target)
             return padded_seqs, x_len, target
-
-    train_dataset = VideoDataset(part='train', load_all=args.load_all)
-    dev_dataset = VideoDataset(part='dev', load_all=args.load_all)
+    
+    train_dataset = VideoDataset(part='train', load_all=args.load_all, split=args.split)
+    dev_dataset = VideoDataset(part='dev', load_all=args.load_all, split=args.split)
     class_info = train_dataset.get_class_info()
     bucket_batch_sampler = BucketBatchSampler(train_dataset.features, args.batchsize)
     train_loader = DataLoader(train_dataset, num_workers=args.num_workers,
@@ -116,11 +135,29 @@ def main():
     if args.model == 'simple_fc':
         net = SimpleFC(400, n_class).to(device)
     elif args.model == 'vanilla_lstm':
-       net = vanillaLSTM(400, n_class=n_class).to(device)
+        net = vanillaLSTM(400, n_class=n_class).to(device)
     elif args.model == 'bilstm':
-       net = BiLSTM(400, n_class=n_class).to(device)
+        net = BiLSTM(input_dim=400,
+                    lstm_layer=args.lstm_layer,
+                    hidden_dim_1=args.lstm_hidden1,
+                    dropout_rate=args.lstm_dropout,
+                    hidden_dim_2=args.lstm_hidden2,
+                    n_class=n_class).to(device)
+    elif args.model == 'bilstm_lm':
+        net = BiLSTMWithLM(input_dim=400,
+                    lstm_layer=args.lstm_layer,
+                    hidden_dim_1=args.lstm_hidden1,
+                    dropout_rate=args.lstm_dropout,
+                    hidden_dim_2=args.lstm_hidden2,
+                    n_class=n_class).to(device)
+    elif args.model == 'win_attn':
+        net = ExpWindowAttention(400, args.attn_head, n_class=n_class).to(device)
     elif args.model == 'bigru':
        net = BiGRU(400, n_class=n_class).to(device)
+    elif args.model == 'attn':
+        net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
+    elif args.model == 'ms_tcn':
+        net = MultiStageModel(400, n_class=n_class).to(device)
     #TODO: add your model name here
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
@@ -132,8 +169,12 @@ def main():
         model_state_dict = torch.load(model_path)
         net.load_state_dict(model_state_dict)
     # criterion = nn.CrossEntropyLoss()
-    criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
+    if args.model == 'ms_tcn':
+        criterion = nn.CrossEntropyLoss(ignore_index=_TARGET_PAD)
+    else:
+        criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_step_size, gamma=args.lr_gamma)
     total_epoch = args.epoch
 
     previous_dev = 0
@@ -152,12 +193,16 @@ def main():
 
             # forward + backward + optimize
             outputs = net(inputs, inputs_len)
+            # print('outside: ', outputs.shape)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
 
             # print statistics
             running_loss += loss.detach().item()
+
+            if args.lr_step_size > 0 and args.lr_gamma < 1:
+                lr_scheduler.step()
 
         delta_time = (datetime.now() - start).seconds / 60.0
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
