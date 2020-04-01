@@ -155,7 +155,7 @@ class VideoDataset(Dataset):
 
 
     def __len__(self):
-        return len(self.features or self.filenames)
+        return len(self.features if self.features is not None else self.filenames)
 
     
     def _load_all_data(self):
