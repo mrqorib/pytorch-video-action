@@ -153,9 +153,10 @@ class BiGRU(nn.Module):
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, input_dim=400, num_heads=4, hidden_dim=256,
-                 dropout_rate=0.3, n_class=2):
+                 dropout_rate=0.3, n_class=2, mode='cont'):
         super().__init__()
         self.input_dim = input_dim
+        self.mode = mode
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.attention = nn.MultiheadAttention(input_dim, num_heads, dropout_rate)
         self.hidden1 = nn.Linear(input_dim, hidden_dim)
@@ -163,10 +164,17 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, x, x_len):
         # x = self.dropout_layer(x)
+        batchsize, max_len, input_dim = x.shape
         x = x.transpose(0,1)
         x, _ = self.attention(x, x, x)
-        x = x.transpose(0,1).contiguous().view(-1, self.input_dim)
+        x = x.transpose(0,1)
+        if self.mode == 'last':
+            x = x[:,-1,:]
         x = self.hidden1(F.relu(x))
+        if self.mode == 'cont': 
+            x = x.contiguous().view(-1, self.input_dim)
+        elif self.mode == 'sum':
+            x = torch.sum(x, dim=1)
         x = self.output(F.relu(x))
         return F.log_softmax(x, dim=1)
 

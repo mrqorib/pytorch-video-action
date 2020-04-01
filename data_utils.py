@@ -104,6 +104,7 @@ class VideoDataset(Dataset):
         if mode == 'segment':
             print('Converting videos into segments...')
             self._turn_videos_to_segments()
+            print('Data has been converted into {} {} segments.'.format(len(self.features), part))
 
 
     def _read_file(self, filename, offset_start = 0, offset_end=0):

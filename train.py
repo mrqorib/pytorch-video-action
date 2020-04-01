@@ -47,6 +47,8 @@ def parse_arguments():
     # attn model params
     parser.add_argument('--attn_head', dest='attn_head', type=int, default=4,
                         help='Number of head in MultiHeadAttention')
+    parser.add_argument('--attn_mode', dest='attn_mode', default='cont',
+                        help='Mode of the attention model')
     # lstm model params
     parser.add_argument('--lstm_layer', dest='lstm_layer', type=int, default=2,
                         help='Number of LSTM layer')
@@ -112,17 +114,24 @@ def main():
     os.makedirs("models", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    def pad_batch(batch, batchsize=args.batchsize):
+    def pad_batch(batch, batchsize=args.batchsize, mode=args.train_mode):
             batch = list(zip(*batch))
             x, y = batch[0], batch[1]
             x_len = [p.shape[0] for p in x]
             max_length = max(x_len)
 
             padded_seqs = torch.zeros((batchsize, max_length, 400))
-            padded_target = torch.empty((batchsize, max_length), dtype=torch.long).fill_(_TARGET_PAD)
+            if args.train_mode == 'segment':
+                y_length = 1
+            else:
+                y_length = max_length
+            padded_target = torch.empty((batchsize, y_length), dtype=torch.long).fill_(_TARGET_PAD)
             for i, l in enumerate(x_len):
                 padded_seqs[i, 0:l] = x[i][0:l]
-                padded_target[i, 0:l] = y[i][0:l]
+                if args.train_mode == 'segment':
+                    padded_target[i,:] = y[i]
+                else:
+                    padded_target[i, 0:l] = y[i][0:l]
 
             target = torch.flatten(padded_target)
             return padded_seqs, x_len, target
@@ -161,7 +170,10 @@ def main():
     elif args.model == 'bigru':
        net = BiGRU(400, n_class=n_class).to(device)
     elif args.model == 'attn':
-        net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
+        net = MultiHeadAttention(400,
+                                 args.attn_head,
+                                 n_class=n_class,
+                                 mode=args.attn_mode).to(device)
     elif args.model == 'ms_tcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
     #TODO: add your model name here
