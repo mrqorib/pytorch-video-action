@@ -156,6 +156,7 @@ class MultiHeadAttention(nn.Module):
                  dropout_rate=0.3, n_class=2, mode='cont'):
         super().__init__()
         self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
         self.mode = mode
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.attention = nn.MultiheadAttention(input_dim, num_heads, dropout_rate)
@@ -172,7 +173,7 @@ class MultiHeadAttention(nn.Module):
             x = x[:,-1,:]
         x = self.hidden1(F.relu(x))
         if self.mode == 'cont': 
-            x = x.contiguous().view(-1, self.input_dim)
+            x = x.contiguous().view(-1, self.hidden_dim)
         elif self.mode == 'sum':
             x = torch.sum(x, dim=1)
         x = self.output(F.relu(x))
