@@ -35,11 +35,13 @@ def parse_arguments():
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
     parser.add_argument('--train_mode', dest='train_mode', default='active',
-                        choices=['segment', 'active', 'cont'], #TODO: add your model name here
+                        choices=['segment', 'active', 'cont'],
                         help='Choose the training mode:\n'\
                              '  > segment: one training instance contains only 1 segment'\
                              '  > active: one training instance is a video with the SIL frames removed'\
                              '  > cont: train the video as whole contiguously')
+    parser.add_argument('--agg_mode', dest='agg_mode', default='cont',
+                        choices=['last', 'avg', 'cont'], help='Classification for segment train-mode')
     parser.add_argument("--load_all", type=bool, nargs='?',
                         const=True, default=False,
                         help='Load all data into RAM '\
@@ -47,8 +49,6 @@ def parse_arguments():
     # attn model params
     parser.add_argument('--attn_head', dest='attn_head', type=int, default=4,
                         help='Number of head in MultiHeadAttention')
-    parser.add_argument('--attn_mode', dest='attn_mode', default='cont',
-                        help='Mode of the attention model')
     # lstm model params
     parser.add_argument('--lstm_layer', dest='lstm_layer', type=int, default=2,
                         help='Number of LSTM layer')
@@ -150,14 +150,20 @@ def main():
     if args.model == 'simple_fc':
         net = SimpleFC(400, n_class).to(device)
     elif args.model == 'vanilla_lstm':
-        net = vanillaLSTM(400, n_class=n_class).to(device)
+        net = vanillaLSTM(400,
+                        lstm_layer=args.lstm_layer,
+                        hidden_dim=args.lstm_hidden1,
+                        dropout_rate=args.lstm_dropout,
+                        n_class=n_class,
+                        mode=args.agg_mode).to(device)
     elif args.model == 'bilstm':
         net = BiLSTM(input_dim=400,
                     lstm_layer=args.lstm_layer,
                     hidden_dim_1=args.lstm_hidden1,
                     dropout_rate=args.lstm_dropout,
                     hidden_dim_2=args.lstm_hidden2,
-                    n_class=n_class).to(device)
+                    n_class=n_class,
+                    mode=args.agg_mode).to(device)
     elif args.model == 'bilstm_lm':
         net = BiLSTMWithLM(input_dim=400,
                     lstm_layer=args.lstm_layer,
@@ -173,7 +179,7 @@ def main():
         net = MultiHeadAttention(400,
                                  args.attn_head,
                                  n_class=n_class,
-                                 mode=args.attn_mode).to(device)
+                                 mode=args.agg_mode).to(device)
     elif args.model == 'ms_tcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
     #TODO: add your model name here
@@ -211,6 +217,8 @@ def main():
 
             # forward + backward + optimize
             outputs = net(inputs, inputs_len)
+            # print(outputs.shape)
+            # print(labels.shape)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()

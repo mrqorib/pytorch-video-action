@@ -22,14 +22,17 @@ class SimpleFC(nn.Module):
         return x
 
 class vanillaLSTM(nn.Module):
-    def __init__(self, input_dim=400, hidden_dim=64, n_class=2):
+    def __init__(self, input_dim=400, lstm_layer=1, dropout_rate=0,
+                 hidden_dim=64, n_class=2, mode='cont'):
         super(vanillaLSTM, self).__init__()
         self.hidden_dim = hidden_dim
+        self.mode = mode
         self.rnn = nn.LSTM(
             input_size=input_dim,
             hidden_size=hidden_dim,
             batch_first=True,
-            num_layers=1)
+            dropout=dropout_rate,
+            num_layers=lstm_layer)
         self.linear = nn.Linear(hidden_dim,n_class)
 
     def forward(self, x, x_len):
@@ -38,14 +41,19 @@ class vanillaLSTM(nn.Module):
         # print(packed)
         packed_output, (h_n, h_c) = self.rnn(packed)
         lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
+        if self.mode == 'last':
+            lstm_out = lstm_out[:,-1,:]
+            # print(lstm_out.shape)
         r_out2 = self.linear(lstm_out.view(-1, self.hidden_dim))
         return F.log_softmax(r_out2, dim=1)
 
 class BiLSTM(nn.Module):
     def __init__(self, input_dim=400, lstm_layer=2, hidden_dim_1=256,
-                 dropout_rate=0.5, hidden_dim_2=64, n_class=2):
+                 dropout_rate=0.5, hidden_dim_2=64, n_class=2, mode='cont'):
         super(BiLSTM, self).__init__()
         self.hidden_dim_1 = hidden_dim_1
+        self.hidden_dim_2 = hidden_dim_2
+        self.mode = mode
         self.rnn = nn.LSTM(
             input_size=input_dim,
             hidden_size=hidden_dim_1 // 2,
@@ -63,9 +71,16 @@ class BiLSTM(nn.Module):
         packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
         packed_output, _ = self.rnn(packed)
         lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
-        lstm_out = lstm_out.view(-1, self.hidden_dim_1)
-        # lstm_out = self.batch_norm(lstm_out)
+        if self.mode == 'last':
+            lstm_out = lstm_out[:,-1,:]
         hidden_out = self.linear(lstm_out)
+        # print(lstm_out.shape)
+        if self.mode == 'avg':
+            hidden_out = torch.mean(hidden_out, dim=1)
+        # print(lstm_out.shape)
+        hidden_out = hidden_out.contiguous().view(-1, self.hidden_dim_2)
+        # lstm_out = lstm_out.view(-1, self.hidden_dim_2)
+        # lstm_out = self.batch_norm(lstm_out)
         dropout = self.dropout_layer(F.relu(hidden_out))
         class_out = self.output(dropout)
 
@@ -174,8 +189,8 @@ class MultiHeadAttention(nn.Module):
         x = self.hidden1(F.relu(x))
         if self.mode == 'cont': 
             x = x.contiguous().view(-1, self.hidden_dim)
-        elif self.mode == 'sum':
-            x = torch.sum(x, dim=1)
+        elif self.mode == 'avg':
+            x = torch.mean(x, dim=1)
         x = self.output(F.relu(x))
         return F.log_softmax(x, dim=1)
 
