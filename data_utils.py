@@ -40,11 +40,11 @@ class BucketBatchSampler(Sampler):
             addition_sample = batch_list[(-2 * addition_count):]
             shuffle(addition_sample)
             batch_list += addition_sample[:addition_count]
-        
+
         group_batch = []
         for i in range(0, len(batch_list), self.batch_size):
             group_batch.append(batch_list[i:i+self.batch_size])
-        
+
         return group_batch
 
     def batch_count(self):
@@ -77,22 +77,22 @@ class VideoDataset(Dataset):
             split_file = os.path.join(annot_path, 'splits', 'new_splits', '{}.split{}.bundle'.format(part, split))
         split_content = self._read_file(split_file, offset_start=1)
         self.filenames = self._get_filenames_from_split(split_content)
-        
+
         mapping_file = os.path.join(annot_path, 'splits', 'splits', 'mapping_bf.txt')
         mapping_content = self._read_file(mapping_file)
         self.class_mapping = self._get_class_info(mapping_content)
-        
+
         self.ground_truth_dir = os.path.join(annot_path, 'groundTruth', 'groundTruth')
         self.data_dir = data_dir
 
         if part == 'test':
             print('Load Segment file')
-            segment_file = open('./segment.txt', 'r') 
+            segment_file = open('./segment.txt', 'r')
             segment_lines = segment_file.readlines()
             for index, line in enumerate(segment_lines):
                 segment_lines[index] = line.replace('\n', '').split(' ')
             self.segment_lines = segment_lines
-        
+
         self.load_all = load_all
         if self.load_all:
             print('Loading all {} data...'.format(part))
@@ -150,7 +150,7 @@ class VideoDataset(Dataset):
     def __len__(self):
         return len(self.features)
 
-    
+
     def _load_all_data(self):
         features_filename = 'data-comp/{}-{}-features.npy'.format(self.part, self.split)
         labels_filename = 'data-comp/{}-{}-labels.npy'.format(self.part, self.split)
@@ -170,7 +170,7 @@ class VideoDataset(Dataset):
                     np.save(features_filename, features)
                     print('All features are successfully saved')
                 except Exception as e:
-                    print('[WARNING] Failed to save data as pickle\n  > ', e)     
+                    print('[WARNING] Failed to save data as pickle\n  > ', e)
             # slice
             processed_feature = []
             for i, feature in enumerate(features):
@@ -203,14 +203,14 @@ class VideoDataset(Dataset):
                     print('All features and labels are successfully saved')
                 except Exception as e:
                     print('[WARNING] Failed to save data as pickle\n  > ', e)
-            print('Exclude out SIL')
-            self.features, self.labels = self._exclude_label(self.features, self.labels, 0)
-        
+            # print('Exclude out SIL')
+            # self.features, self.labels = self._exclude_label(self.features, self.labels, 0)
+
     def _exclude_label(self, data_feat, data_labels, label):
         """Exclude specified label from data_feat and data_labels
             # Arguments
                 data_feat: a list of 2D tensor (no_frame, feat)
-                data_labels: 2D list 
+                data_labels: 2D list
                 label: a string or number, e.g. 0, 1, 2...
             # Returns
                 data_feat_result: a list of 2D tensor (no_frame, feat)
@@ -241,7 +241,7 @@ class VideoDataset(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        
+
         data = torch.tensor(self._get_feature(idx))
         if self.part == 'test':
             label = []
