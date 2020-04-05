@@ -1,14 +1,16 @@
 from datetime import datetime
 import argparse
 import os
+import sys
+import pandas as pd
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU #TODO: import your model here
-import pandas as pd
+from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU, MultiHeadAttention, MultiStageModel #TODO: import your model here
+from statistics import mode 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -18,6 +20,8 @@ def parse_arguments():
                         const=True, default=False,
                         help='Load all data into RAM '\
                             '(make sure you have enough free Memory).')
+    parser.add_argument("--prob", dest='prob', required=True, choices=['small', 'big'],
+                        help='probability smaller or bigger better')
     return parser.parse_args()
 
 def pad_batch(batch, batchsize=1):
@@ -47,13 +51,17 @@ def main():
     for model_filename in args.pretrained_model:
         model = '_'.join(model_filename.split('.')[0].split('_')[:-1])
         if model == 'simple_fc':
-           net = SimpleFC(400, n_class).to(device)
+            net = SimpleFC(400, n_class).to(device)
         elif model == 'vanilla_lstm':
-           net = vanillaLSTM(400, n_class=n_class).to(device)
+            net = vanillaLSTM(400, n_class=n_class).to(device)
         elif model == 'bilstm':
-           net = BiLSTM(400, n_class=n_class).to(device)
+            net = BiLSTM(400, n_class=n_class).to(device)
         elif model == 'bigru':
-           net = BiGRU(400, n_class=n_class).to(device)
+            net = BiGRU(400, n_class=n_class).to(device)
+        elif model == 'attn':
+            net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
+        elif model == 'mstcn':
+            net = MultiStageModel(400, n_class=n_class).to(device)
         try:
             model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)))
             net.load_state_dict(model_state_dict)
@@ -69,6 +77,7 @@ def main():
     print('Start predicting...')
     results = []
     for i, data in enumerate(test_loader, 0):
+        if i % 10 == 0: print('{} out of {}'.format(i, len(test_dataset)))
         inputs, inputs_len = data
         inputs = inputs.to(device)
         # store as models_results[segment] = [model1, model2, model3...]
@@ -85,13 +94,39 @@ def main():
                 start_frame = int(segments[index])
                 end_frame = int(segments[index+1])
                 segment_key = str(start_frame) + '-' + str(end_frame)
-                if(segment_key not in models_result): models_result[segment_key] = []
+                if(segment_key not in models_result): 
+                    models_result[segment_key] = {
+                        'label': [],
+                        'probability': [],
+                        'no_of_frames': []
+                    }
                 predicted_labels = predicted[start_frame: end_frame]
+                normalized_outputs = (_[start_frame: end_frame])/sum(_)
                 # get most frequent one
-                models_result[segment_key].append(int(torch.argmax(torch.bincount(predicted_labels)).item()))
+                model_prediction = int(torch.argmax(torch.bincount(predicted_labels)).item())
+                model_probability_index = torch.LongTensor([i for i, e in enumerate(predicted_labels) if int(e) == model_prediction]).to(device)
+                model_probability = float(torch.take(normalized_outputs, model_probability_index).mean())
+                models_result[segment_key]['label'].append(model_prediction)
+                models_result[segment_key]['probability'].append(model_probability)
+                models_result[segment_key]['no_of_frames'].append(len(model_probability_index))
         # select the most frequent one out of the model, where first model has the priority
         for segment in models_result:
-            results.append(most_frequent(models_result[segment]))             
+            # taking the mode, but if its equal, take either highest/smallest probability
+            try:
+                label = mode(models_result[segment]['label'])
+            except:
+                # if same length then get the probability
+                if(len(set(models_result[segment]['no_of_frames'])) == 1):
+                    probability = models_result[segment]['probability']
+                    if args.prob == 'big':
+                        index = probability.index(max(probability))
+                    else:
+                        index = probability.index(min(probability))
+                else:
+                    no_of_frames = models_result[segment]['no_of_frames']
+                    index = no_of_frames.index(max(no_of_frames))
+                label = models_result[segment]['label'][index]
+            results.append(label)             
     result_path = './results/result_{}_{}'.format('_'.join(args.pretrained_model) ,datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
     print('Writing results to {}...'.format(result_path))
     results_df = pd.DataFrame(results)

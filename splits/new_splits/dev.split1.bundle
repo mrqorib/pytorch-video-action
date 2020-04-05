@@ -1,4 +1,5 @@
-# Counter({0: 32, 7: 31, 3: 31, 8: 29, 1: 29, 2: 29, 6: 29, 5: 28, 9: 28, 4: 27})./data/groundTruth/P23_cam01_P23_tea.txt
+# Counter({0: 32, 7: 31, 3: 31, 8: 29, 1: 29, 2: 29, 6: 29, 5: 28, 9: 28, 4: 27})
+./data/groundTruth/P23_cam01_P23_tea.txt
 ./data/groundTruth/P23_cam02_P23_milk.txt
 ./data/groundTruth/P23_cam02_P23_tea.txt
 ./data/groundTruth/P23_stereo01_P23_coffee.txt
