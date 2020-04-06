@@ -152,8 +152,9 @@ def main():
     elif args.model == 'vanilla_lstm':
         net = vanillaLSTM(400,
                         lstm_layer=args.lstm_layer,
-                        hidden_dim=args.lstm_hidden1,
+                        hidden_dim_1=args.lstm_hidden1,
                         dropout_rate=args.lstm_dropout,
+                        hidden_dim_2=args.lstm_hidden2,
                         n_class=n_class,
                         mode=args.agg_mode).to(device)
     elif args.model == 'bilstm':
