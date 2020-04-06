@@ -23,11 +23,13 @@ class SimpleFC(nn.Module):
 
 class vanillaLSTM(nn.Module):
     def __init__(self, input_dim=400, lstm_layer=1, dropout_rate=0,
-                 hidden_dim_1=64, hidden_dim_2=60, n_class=2, mode='cont'):
+                 hidden_dim_1=64, hidden_dim_2=60, n_class=2,
+                 mode='cont', use_hidden=False):
         super(vanillaLSTM, self).__init__()
         self.hidden_dim_1 = hidden_dim_1
         self.mode = mode
         self.lstm_layer = lstm_layer
+        self.use_hidden = use_hidden
         self.rnn = nn.LSTM(
             input_size=input_dim,
             hidden_size=hidden_dim_1,
@@ -45,9 +47,11 @@ class vanillaLSTM(nn.Module):
         packed_output, (h_n, h_c) = self.rnn(packed)
         lstm_out, _ = pad_packed_sequence(packed_output, batch_first=True)
         if self.mode == 'last':
-            h_n = h_n.view(self.lstm_layer, 1, batchsize, self.hidden_dim_1)
-            lstm_out = h_n[-1,:,:,:]
-            # print(lstm_out.shape)
+            if self.use_hidden:
+                h_n = h_n.view(self.lstm_layer, 1, batchsize, self.hidden_dim_1)
+                lstm_out = h_n[-1,:,:,:]
+            else:
+                lstm_out = lstm_out[:, -1, :]
         hidden_out = self.linear(lstm_out.view(-1, self.hidden_dim_1))
         dropout = self.dropout_layer(F.relu(hidden_out))
         class_out = self.output(dropout)

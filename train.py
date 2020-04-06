@@ -56,8 +56,10 @@ def parse_arguments():
                         help='Dropout rate of LSTM layer')
     parser.add_argument('--lstm_hidden1', dest='lstm_hidden1', type=int, default=256,
                         help='Number of LSTM Hidden neurons')
-    parser.add_argument('--lstm_hidden2', dest='lstm_hidden2', type=int, default=2,
+    parser.add_argument('--lstm_hidden2', dest='lstm_hidden2', type=int, default=64,
                         help='Number of linear hidden neuron')
+    parser.add_argument("--lstm_use_hidden", type=bool, nargs='?',
+                        const=True, default=False, help='Use the hidden instead of the output')
     return parser.parse_args()
 
 def get_label_length_seq(content):
@@ -156,7 +158,8 @@ def main():
                         dropout_rate=args.lstm_dropout,
                         hidden_dim_2=args.lstm_hidden2,
                         n_class=n_class,
-                        mode=args.agg_mode).to(device)
+                        mode=args.agg_mode,
+                        use_hidden=args.lstm_use_hidden).to(device)
     elif args.model == 'bilstm':
         net = BiLSTM(input_dim=400,
                     lstm_layer=args.lstm_layer,
