@@ -40,7 +40,7 @@ def parse_arguments():
                              '  > segment: one training instance contains only 1 segment'\
                              '  > active: one training instance is a video with the SIL frames removed'\
                              '  > cont: train the video as whole contiguously')
-    parser.add_argument('--agg_mode', dest='agg_mode', default='cont',
+    parser.add_argument('--pred_mode', dest='pred_mode', default='cont',
                         choices=['last', 'avg', 'cont'], help='Classification for segment train-mode')
     parser.add_argument("--load_all", type=bool, nargs='?',
                         const=True, default=False,
@@ -114,24 +114,26 @@ def main():
     os.makedirs("models", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    def pad_batch(batch, batchsize=args.batchsize, mode=args.train_mode):
+    def pad_batch(batch, batchsize=args.batchsize, mode=args.pred_mode):
             batch = list(zip(*batch))
             x, y = batch[0], batch[1]
             x_len = [p.shape[0] for p in x]
             max_length = max(x_len)
-
             padded_seqs = torch.zeros((batchsize, max_length, 400))
-            if args.train_mode == 'segment':
+            if mode != 'cont':
                 y_length = 1
             else:
                 y_length = max_length
             padded_target = torch.empty((batchsize, y_length), dtype=torch.long).fill_(_TARGET_PAD)
             for i, l in enumerate(x_len):
                 padded_seqs[i, 0:l] = x[i][0:l]
-                if args.train_mode == 'segment':
+                if mode != 'cont':
                     padded_target[i,:] = y[i]
                 else:
-                    padded_target[i, 0:l] = y[i][0:l]
+                    current_y = y[i]
+                    if args.train_mode == 'segment':
+                        current_y = torch.repeat_interleave(current_y, l)
+                    padded_target[i, 0:l] = current_y[0:l]
 
             target = torch.flatten(padded_target)
             return padded_seqs, x_len, target
@@ -155,7 +157,7 @@ def main():
                         hidden_dim=args.lstm_hidden1,
                         dropout_rate=args.lstm_dropout,
                         n_class=n_class,
-                        mode=args.agg_mode).to(device)
+                        mode=args.pred_mode).to(device)
     elif args.model == 'bilstm':
         net = BiLSTM(input_dim=400,
                     lstm_layer=args.lstm_layer,
@@ -163,7 +165,7 @@ def main():
                     dropout_rate=args.lstm_dropout,
                     hidden_dim_2=args.lstm_hidden2,
                     n_class=n_class,
-                    mode=args.agg_mode).to(device)
+                    mode=args.pred_mode).to(device)
     elif args.model == 'bilstm_lm':
         net = BiLSTMWithLM(input_dim=400,
                     lstm_layer=args.lstm_layer,
@@ -179,7 +181,7 @@ def main():
         net = MultiHeadAttention(400,
                                  args.attn_head,
                                  n_class=n_class,
-                                 mode=args.agg_mode).to(device)
+                                 mode=args.pred_mode).to(device)
     elif args.model == 'ms_tcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
     #TODO: add your model name here
@@ -226,8 +228,8 @@ def main():
             # print statistics
             running_loss += loss.detach().item()
 
-            if args.lr_step_size > 0 and args.lr_gamma < 1:
-                lr_scheduler.step()
+        if args.lr_step_size > 0 and args.lr_gamma < 1:
+            lr_scheduler.step()
 
         delta_time = (datetime.now() - start).seconds / 60.0
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
