@@ -236,8 +236,8 @@ def main():
             # print statistics
             running_loss += loss.detach().item()
 
-            if args.lr_step_size > 0 and args.lr_gamma < 1:
-                lr_scheduler.step()
+        if args.lr_step_size > 0 and args.lr_gamma < 1:
+            lr_scheduler.step()
 
         delta_time = (datetime.now() - start).seconds / 60.0
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
