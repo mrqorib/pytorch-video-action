@@ -157,7 +157,7 @@ def main():
                         hidden_dim=args.lstm_hidden1,
                         dropout_rate=args.lstm_dropout,
                         n_class=n_class,
-                        mode=args.agg_mode).to(device)
+                        mode=args.pred_mode).to(device)
     elif args.model == 'bilstm':
         net = BiLSTM(input_dim=400,
                     lstm_layer=args.lstm_layer,
@@ -165,7 +165,7 @@ def main():
                     dropout_rate=args.lstm_dropout,
                     hidden_dim_2=args.lstm_hidden2,
                     n_class=n_class,
-                    mode=args.agg_mode).to(device)
+                    mode=args.pred_mode).to(device)
     elif args.model == 'bilstm_lm':
         net = BiLSTMWithLM(input_dim=400,
                     lstm_layer=args.lstm_layer,
@@ -181,7 +181,7 @@ def main():
         net = MultiHeadAttention(400,
                                  args.attn_head,
                                  n_class=n_class,
-                                 mode=args.agg_mode).to(device)
+                                 mode=args.pred_mode).to(device)
     elif args.model == 'ms_tcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
     #TODO: add your model name here
@@ -213,14 +213,6 @@ def main():
             inputs, inputs_len, labels = data
             inputs = inputs.to(device)
             labels = labels.to(device)
-
-            # print('inputs: ', inputs)
-            # print('len: ', inputs_len)
-            # print('labels: ', labels)
-            # if i < 4:
-            #     continue
-            # else:
-            #     break
 
             # zero the parameter gradients
             optimizer.zero_grad()
