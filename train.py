@@ -261,7 +261,7 @@ def main():
         print('Dev accuracy by segment: {:.3f}'.format(dev_acc))
         if dev_acc > previous_dev:
             print('{} ==> {}'.format(dev_acc, previous_dev))
-            model_path = 'models/{}_{:.2f}_dev.pth'.format(args.model, dev_acc)
+            model_path = 'models/{}{}_{:.2f}_dev.pth'.format(args.model, args.split, dev_acc)
             torch.save(net.state_dict(), model_path)
             previous_dev = dev_acc
 
