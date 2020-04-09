@@ -66,7 +66,7 @@ class BucketBatchSampler(Sampler):
 class VideoDataset(Dataset):
 
 
-    def __init__(self, data_dir='./data', annot_path='.', part='train', split=0, load_all=False):
+    def __init__(self, data_dir='./data', annot_path='.', part='train', split=3, load_all=False, mode='active'):
         self.part = part.lower().strip()
         self.split = split
         if self.part not in ["train", "dev", "test"]:
@@ -98,6 +98,13 @@ class VideoDataset(Dataset):
             print('Loading all {} data...'.format(part))
             self._load_all_data()
             print('{} {} instances have been loaded.'.format(len(self.features), part))
+        if mode in ['active', 'segment']:
+            print('Excluding out SIL frames...')
+            self.features, self.labels = self._exclude_label(self.features, self.labels, 0)
+        if mode == 'segment':
+            print('Converting videos into segments...')
+            self._turn_videos_to_segments()
+            print('Data has been converted into {} {} segments.'.format(len(self.features), part))
 
 
     def _read_file(self, filename, offset_start = 0, offset_end=0):
@@ -148,7 +155,7 @@ class VideoDataset(Dataset):
 
 
     def __len__(self):
-        return len(self.features)
+        return len(self.features if self.features is not None else self.filenames)
 
 
     def _load_all_data(self):
@@ -203,8 +210,7 @@ class VideoDataset(Dataset):
                     print('All features and labels are successfully saved')
                 except Exception as e:
                     print('[WARNING] Failed to save data as pickle\n  > ', e)
-            # print('Exclude out SIL')
-            # self.features, self.labels = self._exclude_label(self.features, self.labels, 0)
+
 
     def _exclude_label(self, data_feat, data_labels, label):
         """Exclude specified label from data_feat and data_labels
@@ -222,7 +228,39 @@ class VideoDataset(Dataset):
             indexes = [i for i,x in enumerate(file_content) if str(x) == str(label)]
             data_labels_result.append(np.delete(np.array(file_content), indexes))
             data_feat_result.append(np.delete(np.array(data_feat[iter_index]), indexes, axis=0))
-        return data_feat_result, data_labels_result
+        return np.array(data_feat_result), np.array(data_labels_result)
+
+
+    def _turn_videos_to_segments(self):
+        segments = []
+        labels = []
+        for i, video in enumerate(self.features):
+            label = self.labels[i]
+            segment, label, length = self.get_label_length_seq(video, label)
+            segments += segment
+            labels += label
+        self.features = np.array(segments)
+        self.labels = np.array(labels)
+
+
+    def get_label_length_seq(self, frame, label):
+        frame_seq = []
+        label_seq = []
+        length_seq = []
+        start = 0
+        length_seq.append(0)
+        for i in range(len(label)):
+            if label[i] != label[start]:
+                label_seq.append(label[start])
+                frame_seq.append(frame[start:i,:])
+                length_seq.append(i)
+                start = i
+        label_seq.append(label[start])
+        frame_seq.append(frame[start:,:])
+        length_seq.append(len(frame))
+
+        return frame_seq, label_seq, length_seq
+
 
     def _get_feature(self, idx):
         if self.load_all:

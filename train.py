@@ -34,6 +34,14 @@ def parse_arguments():
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
+    parser.add_argument('--train_mode', dest='train_mode', default='active',
+                        choices=['segment', 'active', 'cont'],
+                        help='Choose the training mode:\n'\
+                             '  > segment: one training instance contains only 1 segment'\
+                             '  > active: one training instance is a video with the SIL frames removed'\
+                             '  > cont: train the video as whole contiguously')
+    parser.add_argument('--pred_mode', dest='pred_mode', default='cont',
+                        choices=['last', 'avg', 'cont'], help='Classification for segment train-mode')
     parser.add_argument("--load_all", type=bool, nargs='?',
                         const=True, default=False,
                         help='Load all data into RAM '\
@@ -106,23 +114,32 @@ def main():
     os.makedirs("models", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    def pad_batch(batch, batchsize=args.batchsize):
+    def pad_batch(batch, batchsize=args.batchsize, mode=args.pred_mode):
             batch = list(zip(*batch))
             x, y = batch[0], batch[1]
             x_len = [p.shape[0] for p in x]
             max_length = max(x_len)
-
             padded_seqs = torch.zeros((batchsize, max_length, 400))
-            padded_target = torch.empty((batchsize, max_length), dtype=torch.long).fill_(_TARGET_PAD)
+            if mode != 'cont':
+                y_length = 1
+            else:
+                y_length = max_length
+            padded_target = torch.empty((batchsize, y_length), dtype=torch.long).fill_(_TARGET_PAD)
             for i, l in enumerate(x_len):
                 padded_seqs[i, 0:l] = x[i][0:l]
-                padded_target[i, 0:l] = y[i][0:l]
+                if mode != 'cont':
+                    padded_target[i,:] = y[i]
+                else:
+                    current_y = y[i]
+                    if args.train_mode == 'segment':
+                        current_y = torch.repeat_interleave(current_y, l)
+                    padded_target[i, 0:l] = current_y[0:l]
 
             target = torch.flatten(padded_target)
             return padded_seqs, x_len, target
 
-    train_dataset = VideoDataset(part='train', load_all=args.load_all, split=args.split)
-    dev_dataset = VideoDataset(part='dev', load_all=args.load_all, split=args.split)
+    train_dataset = VideoDataset(part='train', load_all=args.load_all, split=args.split, mode=args.train_mode)
+    dev_dataset = VideoDataset(part='dev', load_all=args.load_all, split=args.split, mode=args.train_mode)
     class_info = train_dataset.get_class_info()
     bucket_batch_sampler = BucketBatchSampler(train_dataset.features, args.batchsize)
     train_loader = DataLoader(train_dataset, num_workers=args.num_workers,
@@ -135,14 +152,20 @@ def main():
     if args.model == 'simple_fc':
         net = SimpleFC(400, n_class).to(device)
     elif args.model == 'vanilla_lstm':
-        net = vanillaLSTM(400, n_class=n_class).to(device)
+        net = vanillaLSTM(400,
+                        lstm_layer=args.lstm_layer,
+                        hidden_dim=args.lstm_hidden1,
+                        dropout_rate=args.lstm_dropout,
+                        n_class=n_class,
+                        mode=args.pred_mode).to(device)
     elif args.model == 'bilstm':
         net = BiLSTM(input_dim=400,
                     lstm_layer=args.lstm_layer,
                     hidden_dim_1=args.lstm_hidden1,
                     dropout_rate=args.lstm_dropout,
                     hidden_dim_2=args.lstm_hidden2,
-                    n_class=n_class).to(device)
+                    n_class=n_class,
+                    mode=args.pred_mode).to(device)
     elif args.model == 'bilstm_lm':
         net = BiLSTMWithLM(input_dim=400,
                     lstm_layer=args.lstm_layer,
@@ -155,7 +178,10 @@ def main():
     elif args.model == 'bigru':
        net = BiGRU(400, n_class=n_class).to(device)
     elif args.model == 'attn':
-        net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
+        net = MultiHeadAttention(400,
+                                 args.attn_head,
+                                 n_class=n_class,
+                                 mode=args.pred_mode).to(device)
     elif args.model == 'ms_tcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
     elif args.model == 'ctcloss':
@@ -223,8 +249,8 @@ def main():
             # print statistics
             running_loss += loss.detach().item()
 
-            if args.lr_step_size > 0 and args.lr_gamma < 1:
-                lr_scheduler.step()
+        if args.lr_step_size > 0 and args.lr_gamma < 1:
+            lr_scheduler.step()
 
         delta_time = (datetime.now() - start).seconds / 60.0
         print('[%d, %5d] loss: %.3f (%.3f mins)' %

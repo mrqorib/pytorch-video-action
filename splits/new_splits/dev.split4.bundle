@@ -1,4 +1,5 @@
-# Counter({3: 31, 0: 31, 7: 30, 8: 29, 1: 29, 2: 29, 6: 28, 9: 28, 4: 27, 5: 27})./data/groundTruth/P48_cam01_P48_milk.txt
+# Counter({3: 31, 0: 31, 7: 30, 8: 29, 1: 29, 2: 29, 6: 28, 9: 28, 4: 27, 5: 27})
+./data/groundTruth/P48_cam01_P48_milk.txt
 ./data/groundTruth/P48_cam02_P48_milk.txt
 ./data/groundTruth/P48_cam02_P48_sandwich.txt
 ./data/groundTruth/P48_stereo01_P48_cereals.txt
