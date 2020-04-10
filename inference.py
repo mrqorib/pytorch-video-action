@@ -42,7 +42,7 @@ def main():
     os.makedirs("results", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print('Device used: {}'.format(device))
-    test_dataset = VideoDataset(part='test', load_all=args.load_all, split=1)
+    test_dataset = VideoDataset(part='test', load_all=args.load_all, split=1, mode='None')
     class_info = test_dataset.get_class_info()
     n_class = len(class_info['class_names'])
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False,
@@ -62,15 +62,15 @@ def main():
             net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
         elif model == 'mstcn':
             net = MultiStageModel(400, n_class=n_class).to(device)
-        try:
-            model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)))
-            net.load_state_dict(model_state_dict)
-            net.to(device)
-            net.eval()
-            models[model_filename] = net
-            print('Load pretrained model: {}'.format(model_filename))
-        except:
-            print('Model {} not found in ./models folder!'.format(model_filename))
+#         try:
+        model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)), map_location=device)
+        net.load_state_dict(model_state_dict)
+        net.to(device)
+        net.eval()
+        models[model_filename] = net
+        print('Load pretrained model: {}'.format(model_filename))
+#         except:
+#             print('Model {} not found in ./models folder!'.format(model_filename))
     if(len(models) == 0):
         print('No model is loaded...')
         return 0
