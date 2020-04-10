@@ -1,6 +1,7 @@
 from datetime import datetime
 import argparse
 import os
+from collections import Counter
 
 import torch
 import torch.nn as nn
@@ -40,6 +41,11 @@ def parse_arguments():
                              '  > segment: one training instance contains only 1 segment'\
                              '  > active: one training instance is a video with the SIL frames removed'\
                              '  > cont: train the video as whole contiguously')
+    parser.add_argument('--label_mode', dest='label_mode', default='active',
+                        choices=['single', 'multi'],
+                        help='Choose the label mode:\n'\
+                             '  > single: 0-48 as the default class id provided by TA'\
+                             '  > multi: [0-13][0-27] in the form of [action, object] id')
     parser.add_argument('--pred_mode', dest='pred_mode', default='cont',
                         choices=['last', 'avg', 'cont'], help='Classification for segment train-mode')
     parser.add_argument("--load_all", type=bool, nargs='?',
@@ -65,8 +71,11 @@ def get_label_length_seq(content):
     length_seq = []
     start = 0
     length_seq.append(0)
+    # print(content)
     for i in range(len(content)):
-        if content[i] != content[start]:
+        # if torch.equal(content[i] != content[start]:
+        # print('{} {}'.format(content[i], content[start]))
+        if not torch.equal(content[i], content[start]):
             label_seq.append(content[start])
             length_seq.append(i)
             start = i
@@ -75,7 +84,7 @@ def get_label_length_seq(content):
 
     return label_seq, length_seq
 
-def evaluate(model, dev_dataset, device):
+def evaluate(model, dev_dataset, device, label_mode):
     correct_segment = 0
     total_segment = 0
     correct_frame = 0
@@ -86,9 +95,16 @@ def evaluate(model, dev_dataset, device):
             inputs = inputs.to(device)
             labels = labels.to(device)
             label_seq, length_seq = get_label_length_seq(labels)
-
             outputs = model(inputs, inputs_len)
-            _, predicted = torch.max(outputs.data, 1)
+            if label_mode == 'single':
+                _, predicted = torch.max(outputs.data, 1)
+            elif label_mode == 'multi':
+                action_pred = torch.argmax(outputs[0], dim=1, keepdim=True)
+                object_pred = torch.argmax(outputs[1], dim=1, keepdim=True)
+                predicted = torch.cat([action_pred, object_pred], dim=1)
+                # labels = torch.split(labels, 1, dim=1)
+                # if correct_frame == 0:
+                #     print('frame\npredicted: {}\nlabels: {}\n'.format(predicted, labels))
             total_frame += labels.size(0)
             correct_frame += (predicted == labels).sum().item()
             
@@ -98,11 +114,20 @@ def evaluate(model, dev_dataset, device):
                 start_frame = int(length_seq[index])
                 end_frame = int(length_seq[index+1])
                 predicted_labels = predicted[start_frame: end_frame]
-                # get most frequent one
-                predicted_label = int(torch.argmax(torch.bincount(predicted_labels)).item())
-                if label_seq[index] == predicted_label: 
-                    correct_segment += 1
-            
+                if label_mode == 'single':
+                    # get most frequent one
+                    predicted_label = int(torch.argmax(torch.bincount(predicted_labels)).item())
+                    if label_seq[index] == predicted_label: 
+                        correct_segment += 1
+                elif label_mode == 'multi':
+                    pred_list = predicted_labels.cpu().numpy()
+                    pred = [tuple(p) for p in pred_list]
+                    label = tuple(label_seq[index].tolist())
+                    segment_pred = Counter(pred).most_common(1)[0][0]
+                    # if correct_segment == 0:
+                    #     print('segment\npredicted: {}\nlabels: {}\n'.format(segment_pred, label))
+                    if segment_pred == label:
+                        correct_segment += 1
             total_segment += len(label_seq)
 
     accuracy_frame = (100 * correct_frame / total_frame)
@@ -114,17 +139,22 @@ def main():
     os.makedirs("models", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    def pad_batch(batch, batchsize=args.batchsize, mode=args.pred_mode):
+    def pad_batch(batch, batchsize=args.batchsize, mode=args.pred_mode, class_dim=2):
             batch = list(zip(*batch))
             x, y = batch[0], batch[1]
             x_len = [p.shape[0] for p in x]
             max_length = max(x_len)
             padded_seqs = torch.zeros((batchsize, max_length, 400))
+            
             if mode != 'cont':
                 y_length = 1
             else:
                 y_length = max_length
-            padded_target = torch.empty((batchsize, y_length), dtype=torch.long).fill_(_TARGET_PAD)
+            if args.label_mode == 'single':
+                padded_target = torch.empty((batchsize, y_length), dtype=torch.long).fill_(_TARGET_PAD)
+            elif args.label_mode == 'multi':
+                padded_target = torch.empty((batchsize, y_length, class_dim), dtype=torch.long).fill_(_TARGET_PAD)
+            
             for i, l in enumerate(x_len):
                 padded_seqs[i, 0:l] = x[i][0:l]
                 if mode != 'cont':
@@ -135,19 +165,23 @@ def main():
                         current_y = torch.repeat_interleave(current_y, l)
                     padded_target[i, 0:l] = current_y[0:l]
 
-            target = torch.flatten(padded_target)
+            target = padded_target.flatten(0, 1)
             return padded_seqs, x_len, target
     
-    train_dataset = VideoDataset(part='train', load_all=args.load_all, split=args.split, mode=args.train_mode)
-    dev_dataset = VideoDataset(part='dev', load_all=args.load_all, split=args.split, mode=args.train_mode)
-    class_info = train_dataset.get_class_info()
+    train_dataset = VideoDataset(part='train', load_all=args.load_all,
+                                 split=args.split, mode=args.train_mode,
+                                 label_mode=args.label_mode)
+    dev_dataset = VideoDataset(part='dev', load_all=args.load_all,
+                               split=args.split, mode=args.train_mode,
+                               label_mode=args.label_mode)
+    n_class = train_dataset.get_class_num()
     bucket_batch_sampler = BucketBatchSampler(train_dataset.features, args.batchsize)
     train_loader = DataLoader(train_dataset, num_workers=args.num_workers,
-                        batch_sampler=bucket_batch_sampler, collate_fn=pad_batch)
+                        batch_sampler=bucket_batch_sampler,
+                        collate_fn=(lambda x: pad_batch(x, class_dim=len(n_class))))
     dev_loader = DataLoader(dev_dataset, batch_size=1, shuffle=False,
                         collate_fn=(lambda x: pad_batch(x, 1)),
                         num_workers=args.num_workers)
-    n_class = len(class_info['class_names'])
 
     if args.model == 'simple_fc':
         net = SimpleFC(400, n_class).to(device)
@@ -214,6 +248,11 @@ def main():
             inputs = inputs.to(device)
             labels = labels.to(device)
 
+            # print('inputs: ', inputs)
+            # print('inputs len: ', inputs_len)
+            # print('labels: ', labels)
+            # if i > 3:
+            #     break
             # zero the parameter gradients
             optimizer.zero_grad()
 
@@ -221,7 +260,19 @@ def main():
             outputs = net(inputs, inputs_len)
             # print(outputs.shape)
             # print(labels.shape)
-            loss = criterion(outputs, labels)
+            if args.label_mode == 'single':
+                loss = criterion(outputs, labels)
+            elif args.label_mode == 'multi':
+                labels = torch.split(labels, 1, dim=1)
+                loss = 0
+                weight = (0.5, 0.5) #dim = (num_class)
+                # print('outputs: ', outputs)
+                # print('labels: ', labels)
+                # print('len out - lab - wgh: {} - {} - {}'\
+                #         .format(len(outputs), len(labels), len(weight)))
+                # print('len class ', len(n_class))
+                for li in range(len(n_class)):
+                    loss += weight[li] * criterion(outputs[li], labels[li].squeeze())
             loss.backward()
             optimizer.step()
 
@@ -235,7 +286,7 @@ def main():
         print('[%d, %5d] loss: %.3f (%.3f mins)' %
             (epoch + 1, i + 1, running_loss / i, delta_time))
         running_loss = 0.0
-        dev_acc, frame_acc = evaluate(net, dev_loader, device)
+        dev_acc, frame_acc = evaluate(net, dev_loader, device, args.label_mode)
         print('Dev accuracy by frame: {:.3f}'.format(frame_acc))
         print('Dev accuracy by segment: {:.3f}'.format(dev_acc))
         if dev_acc > previous_dev:

@@ -154,17 +154,22 @@ class BiGRU(nn.Module):
             num_layers=gru_layer)
         self.linear = nn.Linear(hidden_dim_1, hidden_dim_2)
         self.dropout_layer = nn.Dropout(p=dropout_rate)
-        self.output = nn.Linear(hidden_dim_1, n_class)
+        if isinstance(n_class, int):
+            n_class = [n_class]
+        self.outputs = nn.ModuleList([])
+        for num_class in list(n_class):
+            self.outputs.append(nn.Linear(hidden_dim_1, num_class))
 
     def forward(self, x, x_len):
         x = self.dropout_layer(x)
         packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
         packed_output, _ = self.rnn(packed)
         lstm_out, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
-        class_out = self.output(lstm_out.view(-1, self.hidden_dim_1))
-        # dropout = self.dropout_layer(F.relu(hidden_out))
-        # class_out = self.output(dropout)
-        return F.log_softmax(class_out, dim=1)
+        lstm_out = lstm_out.view(-1, self.hidden_dim_1)
+        out = []
+        for model in self.outputs:
+            out.append(F.log_softmax(model(lstm_out), dim=1))
+        return out
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, input_dim=400, num_heads=4, hidden_dim=256,
@@ -277,15 +282,6 @@ class ExpWindowAttention(nn.Module):
 #         final_output = final_output.reshape(-1, self.n_class)
 #         # print('inside: ', final_output.shape)
 #         return F.log_softmax(final_output, dim=1)
-        # start_idx = np.cumsum([0] + x_len)
-        # for idx, feat in enumerate(att_feats):
-        #     if idx in start_idx:
-        #         last_class = np.zeros((1,))
-        
-        # x = x.view(-1, self.input_dim)
-        # assert x.shape == (max_len * batchsize, self.input_dim)
-        # x = self.output(x)
-        # return F.log_softmax(x, dim=1)
 
 class MultiStageModel(nn.Module):
     def __init__(self, dim=400, num_stages=4, num_layers=10, num_f_maps=64, n_class=2):

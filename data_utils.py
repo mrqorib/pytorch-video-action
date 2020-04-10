@@ -1,4 +1,5 @@
 import os
+import json
 from collections import OrderedDict
 from random import shuffle
 
@@ -66,7 +67,8 @@ class BucketBatchSampler(Sampler):
 class VideoDataset(Dataset):
 
 
-    def __init__(self, data_dir='./data', annot_path='.', part='train', split=3, load_all=False, mode='active'):
+    def __init__(self, data_dir='./data', annot_path='.', part='train',
+                 split=0, load_all=True, mode='active', label_mode='single'):
         self.part = part.lower().strip()
         self.split = split
         if self.part not in ["train", "dev", "test"]:
@@ -78,10 +80,15 @@ class VideoDataset(Dataset):
         split_content = self._read_file(split_file, offset_start=1)
         self.filenames = self._get_filenames_from_split(split_content)
         
-        mapping_file = os.path.join(annot_path, 'splits', 'splits', 'mapping_bf.txt')
-        mapping_content = self._read_file(mapping_file)
-        self.class_mapping = self._get_class_info(mapping_content)
-        
+        self.label_mode = label_mode
+        if label_mode == 'single':
+            mapping_file = os.path.join(annot_path, 'splits', 'splits', 'mapping_bf.txt')
+            mapping_content = self._read_file(mapping_file)
+            self.class_mapping = self._get_class_info(mapping_content)
+        elif label_mode == 'multi':
+            mapping_path = os.path.join(annot_path, 'splits', 'new_splits', 'multilabel_class.txt')
+            with open(mapping_path) as f:
+                self.class_mapping = json.load(f)
         self.ground_truth_dir = os.path.join(annot_path, 'groundTruth', 'groundTruth')
         self.data_dir = data_dir
 
@@ -93,14 +100,18 @@ class VideoDataset(Dataset):
                 segment_lines[index] = line.replace('\n', '').split(' ')
             self.segment_lines = segment_lines
         
-        self.load_all = load_all
+        self.load_all = True # now only support load_all
         if self.load_all:
             print('Loading all {} data...'.format(part))
             self._load_all_data()
             print('{} {} instances have been loaded.'.format(len(self.features), part))
+        # print('all labels: ', self.labels)
+        # print('labels shape: ', self.labels.shape)
         if mode in ['active', 'segment']:
             print('Excluding out SIL frames...')
             self.features, self.labels = self._exclude_label(self.features, self.labels, 0)
+        # print('all labels: ', self.labels)
+        # print('labels shape: ', self.labels.shape)
         if mode == 'segment':
             print('Converting videos into segments...')
             self._turn_videos_to_segments()
@@ -150,17 +161,44 @@ class VideoDataset(Dataset):
     def _load_label_file(self, filename):
         label_file_path = os.path.join(self.ground_truth_dir, filename)
         str_labels = self._read_file(label_file_path)
-        return np.array([self.class_mapping['class_ids'][class_name] \
-                            for class_name in str_labels], dtype=np.long)
+        return np.array([self.get_class_id(cls_name) for cls_name in str_labels],
+                        dtype=np.long)
 
+
+    def get_class_id(self, class_name):
+        if self.label_mode == 'single':
+            return self.class_mapping['class_ids'][class_name]
+        elif self.label_mode == 'multi':
+            if class_name in self.class_mapping['manual_map']:
+                class_name = self.class_mapping['manual_map'][class_name]
+            cls_parts = class_name.split('_')
+            action_label = self.class_mapping['action'][cls_parts[0]]
+            if action_label == 0:
+                object_label = 0
+            else:
+                object_label = self.class_mapping['object'][cls_parts[1]]
+            return [action_label, object_label]
+
+
+    def get_class_num(self):
+        if self.label_mode == 'single':
+            return len(self.class_mapping['class_names'])
+        elif self.label_mode == 'multi':
+            return (len(self.class_mapping['action']),
+                    len(self.class_mapping['object']))
 
     def __len__(self):
         return len(self.features if self.features is not None else self.filenames)
 
     
     def _load_all_data(self):
-        features_filename = 'data-comp/{}-{}-features.npy'.format(self.part, self.split)
-        labels_filename = 'data-comp/{}-{}-labels.npy'.format(self.part, self.split)
+        label_mode = ''
+        if self.label_mode != 'single':
+            label_mode = self.label_mode + '-'
+        features_filename = 'data-comp/{}-{}-{}features.npy'\
+                            .format(self.part, self.split, label_mode)
+        labels_filename = 'data-comp/{}-{}-{}labels.npy'\
+                            .format(self.part, self.split, label_mode)
         os.makedirs("data-comp", exist_ok=True)
         if self.part == 'test':
             try:
@@ -212,7 +250,7 @@ class VideoDataset(Dataset):
                     print('[WARNING] Failed to save data as pickle\n  > ', e)
 
 
-    def _exclude_label(self, data_feat, data_labels, label):
+    def _exclude_label(self, data_feat, data_labels, label, cls_index=0):
         """Exclude specified label from data_feat and data_labels
             # Arguments
                 data_feat: a list of 2D tensor (no_frame, feat)
@@ -225,9 +263,15 @@ class VideoDataset(Dataset):
         data_feat_result = []
         data_labels_result = []
         for iter_index, file_content in enumerate(data_labels):
-            indexes = [i for i,x in enumerate(file_content) if str(x) == str(label)]
-            data_labels_result.append(np.delete(np.array(file_content), indexes))
-            data_feat_result.append(np.delete(np.array(data_feat[iter_index]), indexes, axis=0))
+            # indexes = [i for i,x in enumerate(file_content) if str(x) == str(label)]
+            # data_labels_result.append(np.delete(np.array(file_content), indexes, axis=0))
+            # data_feat_result.append(np.delete(np.array(data_feat[iter_index]), indexes, axis=0))
+            if self.label_mode == 'single':
+                mask = [str(x) != str(label) for i,x in enumerate(file_content)]
+            elif self.label_mode == 'multi':
+                mask = [str(x[cls_index]) != str(label) for i,x in enumerate(file_content)]
+            data_labels_result.append(file_content[mask])
+            data_feat_result.append(data_feat[iter_index][mask])
         return np.array(data_feat_result), np.array(data_labels_result)
 
 
@@ -287,4 +331,6 @@ class VideoDataset(Dataset):
             label = self._get_label(idx)
         label = torch.tensor(label, dtype=torch.long)
         # label = label.type(torch.long)
+        # print('data ', data)
+        # print('label ', label)
         return (data, label)
