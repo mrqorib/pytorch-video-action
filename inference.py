@@ -2,7 +2,6 @@ from datetime import datetime
 import argparse
 import os
 import sys
-import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -62,15 +61,15 @@ def main():
             net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
         elif model == 'mstcn':
             net = MultiStageModel(400, n_class=n_class).to(device)
-#         try:
-        model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)), map_location=device)
-        net.load_state_dict(model_state_dict)
-        net.to(device)
-        net.eval()
-        models[model_filename] = net
-        print('Load pretrained model: {}'.format(model_filename))
-#         except:
-#             print('Model {} not found in ./models folder!'.format(model_filename))
+        try:
+            model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)), map_location=device)
+            net.load_state_dict(model_state_dict)
+            net.to(device)
+            net.eval()
+            models[model_filename] = net
+            print('Load pretrained model: {}'.format(model_filename))
+        except:
+            print('Model {} not found in ./models folder!'.format(model_filename))
     if(len(models) == 0):
         print('No model is loaded...')
         return 0
@@ -129,15 +128,12 @@ def main():
             results.append(label)             
     result_path = './results/result_{}_{}'.format('_'.join(args.pretrained_model) ,datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
     print('Writing results to {}...'.format(result_path))
-    results_df = pd.DataFrame(results)
-    results_df.index.name = 'Id'
-    results_df.columns = ['Category']
-    results_df.to_csv(result_path, mode='a', line_terminator="", sep=',')
-    # remove last blank line written by pandas to_csv
-    with open(result_path) as f:
-        lines = f.readlines()
-        last = len(lines) - 1
-        lines[last] = lines[last].replace('\r','').replace('\n','')
+    lines = 'Id,Category\n'
+    for index, result in enumerate(results):
+        if(index == len(a) - 1): 
+            lines += str(index) + ',' + str(result)
+        else: 
+            lines += str(index) + ',' + str(result) + '\n'
     with open(result_path, 'w') as wr:
         wr.writelines(lines)
 
