@@ -130,7 +130,7 @@ def main():
     print('Writing results to {}...'.format(result_path))
     lines = 'Id,Category\n'
     for index, result in enumerate(results):
-        if(index == len(a) - 1): 
+        if(index == len(results) - 1): 
             lines += str(index) + ',' + str(result)
         else: 
             lines += str(index) + ',' + str(result) + '\n'
