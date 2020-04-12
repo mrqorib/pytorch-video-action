@@ -2,7 +2,6 @@ from datetime import datetime
 import argparse
 import os
 import sys
-import pandas as pd
 
 import torch
 import torch.nn as nn
@@ -10,7 +9,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
 from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU, MultiHeadAttention, MultiStageModel #TODO: import your model here
-from statistics import mode 
+from statistics import mode
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -34,15 +33,15 @@ def pad_batch(batch, batchsize=1):
         padded_seqs[i, 0:l] = x[i][0:l]
     return padded_seqs, x_len
 
-def most_frequent(List): 
-    return max(set(List), key = List.count) 
+def most_frequent(List):
+    return max(set(List), key = List.count)
 
 def main():
     args = parse_arguments()
     os.makedirs("results", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print('Device used: {}'.format(device))
-    test_dataset = VideoDataset(part='test', load_all=args.load_all, split=1)
+    test_dataset = VideoDataset(part='test', load_all=args.load_all, split=1, mode='None')
     class_info = test_dataset.get_class_info()
     n_class = len(class_info['class_names'])
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False,
@@ -63,7 +62,7 @@ def main():
         elif model == 'mstcn':
             net = MultiStageModel(400, n_class=n_class).to(device)
         try:
-            model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)))
+            model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)), map_location=device)
             net.load_state_dict(model_state_dict)
             net.to(device)
             net.eval()
@@ -94,7 +93,7 @@ def main():
                 start_frame = int(segments[index])
                 end_frame = int(segments[index+1])
                 segment_key = str(start_frame) + '-' + str(end_frame)
-                if(segment_key not in models_result): 
+                if(segment_key not in models_result):
                     models_result[segment_key] = {
                         'label': [],
                         'probability': [],
@@ -104,40 +103,51 @@ def main():
                 normalized_outputs = (_[start_frame: end_frame])/sum(_)
                 # get most frequent one
                 model_prediction = int(torch.argmax(torch.bincount(predicted_labels)).item())
-                model_probability_index = torch.LongTensor([i for i, e in enumerate(predicted_labels) if int(e) == model_prediction]).to(device)
-                model_probability = float(torch.take(normalized_outputs, model_probability_index).mean())
-                models_result[segment_key]['label'].append(model_prediction)
-                models_result[segment_key]['probability'].append(model_probability)
-                models_result[segment_key]['no_of_frames'].append(len(model_probability_index))
+
+                # take next highest if prediction is 0
+                if (model_prediction == 0 and torch.bincount(predicted_labels).shape[0] > 1):
+                    model_prediction = int(torch.argsort(torch.bincount(predicted_labels))[1].item())
+
+                # if all 0s, ignore the result
+                if (model_prediction != 0):
+                    model_probability_index = torch.LongTensor([i for i, e in enumerate(predicted_labels) if int(e) == model_prediction]).to(device)
+                    model_probability = float(torch.take(normalized_outputs, model_probability_index).mean())
+                    models_result[segment_key]['label'].append(model_prediction)
+                    models_result[segment_key]['probability'].append(model_probability)
+                    models_result[segment_key]['no_of_frames'].append(len(model_probability_index))
+
         # select the most frequent one out of the model, where first model has the priority
         for segment in models_result:
             # taking the mode, but if its equal, take either highest/smallest probability
             try:
                 label = mode(models_result[segment]['label'])
             except:
-                # if same length then get the probability
-                if(len(set(models_result[segment]['no_of_frames'])) == 1):
-                    probability = models_result[segment]['probability']
-                    if args.prob == 'big':
-                        index = probability.index(max(probability))
+                try:
+                    # if same length then get the probability
+                    if(len(set(models_result[segment]['no_of_frames'])) == 1):
+                        probability = models_result[segment]['probability']
+                        if args.prob == 'big':
+                            index = probability.index(max(probability))
+                        else:
+                            index = probability.index(min(probability))
                     else:
-                        index = probability.index(min(probability))
-                else:
-                    no_of_frames = models_result[segment]['no_of_frames']
-                    index = no_of_frames.index(max(no_of_frames))
-                label = models_result[segment]['label'][index]
-            results.append(label)             
+                        no_of_frames = models_result[segment]['no_of_frames']
+                        index = no_of_frames.index(max(no_of_frames))
+                    label = models_result[segment]['label'][index]
+                except:
+                    # error: every model is predicting 0
+                    print('Blank prediction.')
+                    label = 0
+
+            results.append(label)
     result_path = './results/result_{}_{}'.format('_'.join(args.pretrained_model) ,datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
     print('Writing results to {}...'.format(result_path))
-    results_df = pd.DataFrame(results)
-    results_df.index.name = 'Id'
-    results_df.columns = ['Category']
-    results_df.to_csv(result_path, mode='a', line_terminator="", sep=',')
-    # remove last blank line written by pandas to_csv
-    with open(result_path) as f:
-        lines = f.readlines()
-        last = len(lines) - 1
-        lines[last] = lines[last].replace('\r','').replace('\n','')
+    lines = 'Id,Category\n'
+    for index, result in enumerate(results):
+        if(index == len(results) - 1):
+            lines += str(index) + ',' + str(result)
+        else:
+            lines += str(index) + ',' + str(result) + '\n'
     with open(result_path, 'w') as wr:
         wr.writelines(lines)
 

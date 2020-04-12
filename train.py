@@ -30,7 +30,7 @@ def parse_arguments():
     parser.add_argument('--model', dest='model', default='simple_fc',
                         choices=['simple_fc', 'vanilla_lstm', 'bilstm',
                                  'bilstm_lm', 'attn', 'win_attn',
-                                 'bigru', 'attn', 'ms_tcn'], #TODO: add your model name here
+                                 'bigru', 'attn', 'ms_tcn', 'ctcloss'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
@@ -172,7 +172,7 @@ def evaluate(model, dev_dataset, device):
             _, predicted = torch.max(outputs.data, 1)
             total_frame += labels.size(0)
             correct_frame += (predicted == labels).sum().item()
-            
+
             for index, segment in enumerate(length_seq):
                 if (index == len(length_seq) - 1):
                     break
@@ -181,9 +181,9 @@ def evaluate(model, dev_dataset, device):
                 predicted_labels = predicted[start_frame: end_frame]
                 # get most frequent one
                 predicted_label = int(torch.argmax(torch.bincount(predicted_labels)).item())
-                if label_seq[index] == predicted_label: 
+                if label_seq[index] == predicted_label:
                     correct_segment += 1
-            
+
             total_segment += len(label_seq)
 
     accuracy_frame = (100 * correct_frame / total_frame)
@@ -218,7 +218,7 @@ def main():
 
             target = torch.flatten(padded_target)
             return padded_seqs, x_len, target
-    
+
     train_dataset = VideoDataset(part='train', load_all=args.load_all, split=args.split, mode=args.train_mode)
     dev_dataset = VideoDataset(part='dev', load_all=args.load_all, split=args.split, mode=args.train_mode)
     class_info = train_dataset.get_class_info()
@@ -265,6 +265,8 @@ def main():
                                  mode=args.pred_mode).to(device)
     elif args.model == 'ms_tcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
+    elif args.model == 'ctcloss':
+        net = BiGRU(400, n_class=n_class+1).to(device)
     #TODO: add your model name here
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
@@ -278,8 +280,11 @@ def main():
     # criterion = nn.CrossEntropyLoss()
     if args.model == 'ms_tcn':
         criterion = nn.CrossEntropyLoss(ignore_index=_TARGET_PAD)
+    elif args.model == 'ctcloss':
+        criterion = nn.CTCLoss(blank=n_class, zero_infinity=True)
     else:
         criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
+
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_step_size, gamma=args.lr_gamma)
     total_epoch = args.epoch
@@ -316,9 +321,25 @@ def main():
 
             # forward + backward + optimize
             outputs = net(inputs, inputs_len)
-            # print(outputs.shape)
-            # print(labels.shape)
-            loss = criterion(outputs, labels)
+
+            # if using ctc loss: prepare the inputs
+            if args.model == 'ctcloss':
+                labels = labels.reshape(inputs.shape[0], -1)
+                targets = torch.tensor([], dtype=torch.int64, device=device)
+                targets_len = []
+
+                for j in range(labels.shape[0]):
+                    unique_labels = torch.unique_consecutive(labels[j])
+                    targets = torch.cat((targets, unique_labels))
+                    targets_len.append(unique_labels.shape[0])
+
+                outputs = outputs.reshape(inputs.shape[0], inputs.shape[1], -1)
+                outputs = outputs.permute(1,0,2)
+                loss = criterion(outputs, targets, torch.tensor(inputs_len), torch.tensor(targets_len))
+
+            else:
+                loss = criterion(outputs, labels)
+
             loss.backward()
             optimizer.step()
 
@@ -337,7 +358,7 @@ def main():
         print('Dev accuracy by segment: {:.3f}'.format(dev_acc))
         if dev_acc > previous_dev:
             print('{} ==> {}'.format(dev_acc, previous_dev))
-            model_path = 'models/{}_{:.2f}_dev.pth'.format(args.model, dev_acc)
+            model_path = 'models/{}{}_{:.2f}_dev.pth'.format(args.model, args.split, dev_acc)
             torch.save(net.state_dict(), model_path)
             previous_dev = dev_acc
 
