@@ -43,9 +43,20 @@ def parse_arguments():
     parser.add_argument('--pred_mode', dest='pred_mode', default='cont',
                         choices=['last', 'avg', 'cont'], help='Classification for segment train-mode')
     parser.add_argument("--load_all", type=bool, nargs='?',
+                        const=True, default=True,
+                        help='[Deprecated ]Now enforced to use --load_all')
+    parser.add_argument("--eval", type=bool, nargs='?',
                         const=True, default=False,
-                        help='Load all data into RAM '\
-                            '(make sure you have enough free Memory).')
+                        help='Only evaluating model, not training')
+    # beam search params
+    parser.add_argument('--lm_path', dest='lm_path', default=None,
+                        help='Path to the language model for beam search decoding')
+    parser.add_argument('--beam_size', dest='beam_size', type=int, default=5,
+                        help='beam_size')
+    parser.add_argument('--lm_weight', dest='lm_weight', type=float, default=0.5,
+                        help='lm_weight')
+    parser.add_argument('--model_weight', dest='model_weight', type=float, default=0.5,
+                        help='model_weight')
     # attn model params
     parser.add_argument('--attn_head', dest='attn_head', type=int, default=4,
                         help='Number of head in MultiHeadAttention')
@@ -74,6 +85,76 @@ def get_label_length_seq(content):
     length_seq.append(len(content))
 
     return label_seq, length_seq
+
+def eval_beam_search(model, dev_dataset, device, lm_path,
+                beam_size=5, lm_weight=0.5, model_weight=0.5, threshold=0.2):
+    import kenlm
+    lm_model = kenlm.LanguageModel(lm_path)
+
+    correct_segment = 0
+    total_segment = 0
+    correct_frame = 0
+    total_frame = 0
+    for data in dev_dataset:
+        inputs, inputs_len, labels = data
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        label_seq, length_seq = get_label_length_seq(labels)
+
+        outputs = model(inputs, inputs_len)
+        _, predicted = torch.max(outputs.data, 1)
+        total_frame += labels.size(0)
+        correct_frame += (predicted == labels).sum().item()
+        
+        prediction_beam = [('',0)]
+        for index, segment in enumerate(length_seq):
+            if (index == len(length_seq) - 1):
+                break
+            start_frame = int(length_seq[index])
+            end_frame = int(length_seq[index+1])
+            frame_prediction = predicted[start_frame: end_frame]
+            # add to the beam
+            label_count = torch.bincount(frame_prediction)
+            # print('label count: ', label_count)
+            label_prob = (label_count - min(label_count)) / (10e-6 + max(label_count) - min(label_count))
+            # print('label prob: ', label_prob)
+            predicted_labels = torch.argsort(label_count, descending=True)
+            label_prob = label_prob[predicted_labels]
+            mask = label_prob > threshold
+            predicted_labels = predicted_labels[mask]
+            # print('predicted_labels: ', predicted_labels)
+            # print('normal prediction: ', int(torch.argmax(torch.bincount(frame_prediction)).item()))
+            # print('true labels: ', label_seq[index])
+            new_beam = []
+            for (current_pred, current_prob) in prediction_beam:
+                for label in predicted_labels:
+                    label = label.item()
+                    new_prob = current_prob
+                    new_pred = current_pred + ' ' + str(label)
+                    new_pred = new_pred.strip()
+                    lm_score = lm_model.score(new_pred) #* lm_weight
+                    # lm_score = 0
+                    # model_score = label_prob[label].item() * model_weight
+                    # new_prob += lm_score + model_score
+                    new_prob = lm_score
+                    new_beam.append((new_pred, new_prob))
+            prediction_beam = sorted(new_beam, key=lambda x: x[1], reverse=True)[:beam_size]
+            prediction_beam = new_beam[:beam_size]
+            # print('new_beam: ', new_beam)
+            # print('prediction_beam: ', prediction_beam)
+        prediction = prediction_beam[0][0].split(' ')
+        # print('prediction: ', prediction)
+        # print('label_seq: ', label_seq)
+        assert len(prediction) == len(label_seq)
+        for index, predicted_label in enumerate(prediction):
+            if label_seq[index].item() == int(predicted_label): 
+                    correct_segment += 1
+        total_segment += len(label_seq)
+        # break
+    
+    accuracy_frame = (100 * correct_frame / total_frame)
+    accuracy_segment = (100 * correct_segment / total_segment)
+    return accuracy_segment, accuracy_frame 
 
 def evaluate(model, dev_dataset, device):
     correct_segment = 0
@@ -192,7 +273,7 @@ def main():
 
     if args.pretrained_model is not None:
         model_path = os.path.join('models', '{}.pth'.format(args.pretrained_model))
-        model_state_dict = torch.load(model_path)
+        model_state_dict = torch.load(model_path, map_location=device)
         net.load_state_dict(model_state_dict)
     # criterion = nn.CrossEntropyLoss()
     if args.model == 'ms_tcn':
@@ -202,6 +283,22 @@ def main():
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_step_size, gamma=args.lr_gamma)
     total_epoch = args.epoch
+
+    if args.eval:
+        if args.pretrained_model is None:
+            print('[ERROR] Please provide the model path with --pretrained_model <model_path>')
+            print('Exiting.')
+            return
+        
+        if args.lm_path is not None:
+            dev_acc, frame_acc = eval_beam_search(net, dev_loader, device, args.lm_path,
+                                                  args.beam_size, args.lm_weight, args.model_weight)
+        else:
+            dev_acc, frame_acc = evaluate(net, dev_loader, device)
+        
+        print('Dev accuracy by frame: {:.3f}'.format(frame_acc))
+        print('Dev accuracy by segment: {:.3f}'.format(dev_acc))
+        return
 
     previous_dev = 0
     for epoch in range(total_epoch):
