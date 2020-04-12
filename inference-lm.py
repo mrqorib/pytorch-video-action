@@ -125,13 +125,11 @@ def main():
             pred_prob, pred_class = torch.max(outputs.data, 1)
             pred_probs.append(pred_prob)
             pred_classes.append(pred_class)
-        
+
         if args.part == 'dev':
             segments = length_seq
         else:
             segments = test_dataset.segment_lines[i]
-        prediction_beam = []
-        beam_size = 5
         
         prediction_beam = [('',0)]
         for index, segment in enumerate(segments):
@@ -144,36 +142,30 @@ def main():
                 frame_prediction = predicted[start_frame: end_frame]
                 label_count = torch.bincount(frame_prediction)
                 label_prob = (label_count - min(label_count)) / (10e-6 + max(label_count) - min(label_count))
-                # print(label_count)
-                # label_prob = label_count / torch.sum(label_count)
-                # print('sum ', torch.sum(label_count))
-                # print('label_prob ', label_prob)
                 predicted_labels = torch.argsort(label_count, descending=True)
                 label_prob = label_prob[predicted_labels]
-                # print(label_prob)
                 mask = label_prob > args.threshold
                 predicted_labels = predicted_labels[mask]
                 label_candidates.append(predicted_labels)
-            label_candidates = torch.unique(torch.cat(label_candidates))
+            label_candidates = torch.cat(label_candidates)
+            label_candidates = torch.unique(label_candidates)
             if args.remove_zero:
                 label_candidates = label_candidates[label_candidates.nonzero()]
+                if len(label_candidates) == 0:
+                    label_candidates = torch.tensor([0])
+
             new_beam = []
-            # print('label_candidates ', label_candidates)
             for (current_pred, current_prob) in prediction_beam:
                 for label in label_candidates:
                     label = label.item()
-                    new_prob = current_prob
                     new_pred = current_pred + ' ' + str(label)
                     new_pred = new_pred.strip()
                     new_prob = lm_model.score(new_pred)
                     new_beam.append((new_pred, new_prob))
-            prediction_beam = sorted(new_beam, key=lambda x: x[1], reverse=True)[:beam_size]
-            prediction_beam = new_beam[:beam_size]
-            # print(prediction_beam)
+            prediction_beam = sorted(new_beam, key=lambda x: x[1], reverse=True)[:args.beam_size]
+
         prediction = prediction_beam[0][0].split(' ')
         if args.part == 'dev':
-            # print('prediction: ', prediction)
-            # print('label_seq: ', label_seq)
             assert len(prediction) == len(label_seq)
             for index, predicted_label in enumerate(prediction):
                 if label_seq[index].item() == int(predicted_label): 

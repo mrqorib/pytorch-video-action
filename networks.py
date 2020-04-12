@@ -296,9 +296,9 @@ class MultiStageModel(nn.Module):
 
     def forward(self, x, x_len):
         x = x.transpose(1,2)
-        mask = torch.zeros(x.shape[0], self.n_class, max(x_len), dtype=torch.float).cuda()
+        mask = torch.zeros(x.shape[0], self.n_class, max(x_len), dtype=torch.float, device=x.device)
         for i in range(x.shape[0]):
-            mask[i, :, :x_len[i]] = torch.ones(self.n_class, x_len[i]).cuda()
+            mask[i, :, :x_len[i]] = torch.ones(self.n_class, x_len[i], device=x.device)
 
         out = self.stage1(x, mask)
         outputs = out.unsqueeze(0)

@@ -53,10 +53,6 @@ def parse_arguments():
                         help='Path to the language model for beam search decoding')
     parser.add_argument('--beam_size', dest='beam_size', type=int, default=5,
                         help='beam_size')
-    parser.add_argument('--lm_weight', dest='lm_weight', type=float, default=0.5,
-                        help='lm_weight')
-    parser.add_argument('--model_weight', dest='model_weight', type=float, default=0.5,
-                        help='model_weight')
     # attn model params
     parser.add_argument('--attn_head', dest='attn_head', type=int, default=4,
                         help='Number of head in MultiHeadAttention')
@@ -87,7 +83,7 @@ def get_label_length_seq(content):
     return label_seq, length_seq
 
 def eval_beam_search(model, dev_dataset, device, lm_path,
-                beam_size=5, lm_weight=0.5, model_weight=0.5, threshold=0.2):
+                beam_size=5, threshold=0.15):
     import kenlm
     lm_model = kenlm.LanguageModel(lm_path)
 
@@ -115,16 +111,11 @@ def eval_beam_search(model, dev_dataset, device, lm_path,
             frame_prediction = predicted[start_frame: end_frame]
             # add to the beam
             label_count = torch.bincount(frame_prediction)
-            # print('label count: ', label_count)
             label_prob = (label_count - min(label_count)) / (10e-6 + max(label_count) - min(label_count))
-            # print('label prob: ', label_prob)
             predicted_labels = torch.argsort(label_count, descending=True)
             label_prob = label_prob[predicted_labels]
             mask = label_prob > threshold
             predicted_labels = predicted_labels[mask]
-            # print('predicted_labels: ', predicted_labels)
-            # print('normal prediction: ', int(torch.argmax(torch.bincount(frame_prediction)).item()))
-            # print('true labels: ', label_seq[index])
             new_beam = []
             for (current_pred, current_prob) in prediction_beam:
                 for label in predicted_labels:
@@ -132,19 +123,11 @@ def eval_beam_search(model, dev_dataset, device, lm_path,
                     new_prob = current_prob
                     new_pred = current_pred + ' ' + str(label)
                     new_pred = new_pred.strip()
-                    lm_score = lm_model.score(new_pred) #* lm_weight
-                    # lm_score = 0
-                    # model_score = label_prob[label].item() * model_weight
-                    # new_prob += lm_score + model_score
+                    lm_score = lm_model.score(new_pred)
                     new_prob = lm_score
                     new_beam.append((new_pred, new_prob))
             prediction_beam = sorted(new_beam, key=lambda x: x[1], reverse=True)[:beam_size]
-            prediction_beam = new_beam[:beam_size]
-            # print('new_beam: ', new_beam)
-            # print('prediction_beam: ', prediction_beam)
         prediction = prediction_beam[0][0].split(' ')
-        # print('prediction: ', prediction)
-        # print('label_seq: ', label_seq)
         assert len(prediction) == len(label_seq)
         for index, predicted_label in enumerate(prediction):
             if label_seq[index].item() == int(predicted_label): 
@@ -296,8 +279,7 @@ def main():
             return
         
         if args.lm_path is not None:
-            dev_acc, frame_acc = eval_beam_search(net, dev_loader, device, args.lm_path,
-                                                  args.beam_size, args.lm_weight, args.model_weight)
+            dev_acc, frame_acc = eval_beam_search(net, dev_loader, device, args.lm_path, args.beam_size)
         else:
             dev_acc, frame_acc = evaluate(net, dev_loader, device)
         

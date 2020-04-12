@@ -11,6 +11,8 @@ from data_utils import VideoDataset, BucketBatchSampler
 from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU, MultiHeadAttention, MultiStageModel #TODO: import your model here
 from statistics import mode
 
+_TARGET_PAD = -1
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--pretrained_model', dest='pretrained_model', nargs='+', required=True,
@@ -21,6 +23,10 @@ def parse_arguments():
                             '(make sure you have enough free Memory).')
     parser.add_argument("--prob", dest='prob', required=True, choices=['small', 'big'],
                         help='probability smaller or bigger better')
+    parser.add_argument("--part", dest='part', default='test', choices=['dev', 'test'],
+                    help='infer the dev or test')
+    parser.add_argument('--split', dest='split', type=int, default=0,
+                        help='split')
     return parser.parse_args()
 
 def pad_batch(batch, batchsize=1):
@@ -29,19 +35,41 @@ def pad_batch(batch, batchsize=1):
     x_len = [p.shape[0] for p in x]
     max_length = max(x_len)
     padded_seqs = torch.zeros((batchsize, max_length, 400))
+    padded_target = torch.empty((batchsize, max_length), dtype=torch.long).fill_(_TARGET_PAD)
     for i, l in enumerate(x_len):
         padded_seqs[i, 0:l] = x[i][0:l]
-    return padded_seqs, x_len
+        padded_target[i, 0:l] = y[i][0:l]
+    target = torch.flatten(padded_target)
+    return padded_seqs, x_len, target
 
 def most_frequent(List):
     return max(set(List), key = List.count)
+
+def get_label_length_seq(content):
+    label_seq = []
+    length_seq = []
+    start = 0
+    length_seq.append(0)
+    for i in range(len(content)):
+        if content[i] != content[start]:
+            label_seq.append(content[start])
+            length_seq.append(i)
+            start = i
+    label_seq.append(content[start])
+    length_seq.append(len(content))
+
+    return label_seq, length_seq
 
 def main():
     args = parse_arguments()
     os.makedirs("results", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print('Device used: {}'.format(device))
-    test_dataset = VideoDataset(part='test', load_all=args.load_all, split=1, mode='None')
+    if args.part == 'dev':
+        split = args.split
+    else:
+        split = 1
+    test_dataset = VideoDataset(part=args.part, load_all=True, split=split)
     class_info = test_dataset.get_class_info()
     n_class = len(class_info['class_names'])
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False,
@@ -62,30 +90,38 @@ def main():
         elif model == 'mstcn':
             net = MultiStageModel(400, n_class=n_class).to(device)
         try:
-            model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)), map_location=device)
+            model_path = os.path.join('models', '{}.pth'.format(model_filename))
+            model_state_dict = torch.load(model_path, map_location=device)
             net.load_state_dict(model_state_dict)
             net.to(device)
-            net.eval()
+            # net.eval()
             models[model_filename] = net
             print('Load pretrained model: {}'.format(model_filename))
-        except:
-            print('Model {} not found in ./models folder!'.format(model_filename))
+        except Exception as e:
+            print(e)
+            print('Model {} not found in {} folder!'.format(model_filename, model_path))
     if(len(models) == 0):
         print('No model is loaded...')
         return 0
     print('Start predicting...')
     results = []
+    correct_segment = 0
+    total_segment = 0
     for i, data in enumerate(test_loader, 0):
         if i % 10 == 0: print('{} out of {}'.format(i, len(test_dataset)))
-        inputs, inputs_len = data
+        inputs, inputs_len, labels = data
         inputs = inputs.to(device)
+        label_seq, length_seq = get_label_length_seq(labels)
         # store as models_results[segment] = [model1, model2, model3...]
         models_result = {}
         for key in models:
             model = models[key]
             outputs = model(inputs, inputs_len)
             _, predicted = torch.max(outputs.data, 1)
-            segments = test_dataset.segment_lines[i]
+            if args.part == 'dev':
+                segments = length_seq
+            else:
+                segments = test_dataset.segment_lines[i]
             # break the predicted labels to segments and take max frequency
             for index, segment in enumerate(segments):
                 if (index == len(segments) - 1):
@@ -117,7 +153,7 @@ def main():
                     models_result[segment_key]['no_of_frames'].append(len(model_probability_index))
 
         # select the most frequent one out of the model, where first model has the priority
-        for segment in models_result:
+        for seg_index, segment in enumerate(models_result):
             # taking the mode, but if its equal, take either highest/smallest probability
             try:
                 label = mode(models_result[segment]['label'])
@@ -139,17 +175,31 @@ def main():
                     print('Blank prediction.')
                     label = 0
 
-            results.append(label)
-    result_path = './results/result_{}_{}'.format('_'.join(args.pretrained_model) ,datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
-    print('Writing results to {}...'.format(result_path))
-    lines = 'Id,Category\n'
-    for index, result in enumerate(results):
-        if(index == len(results) - 1):
-            lines += str(index) + ',' + str(result)
-        else:
-            lines += str(index) + ',' + str(result) + '\n'
-    with open(result_path, 'w') as wr:
-        wr.writelines(lines)
+            if args.part == 'dev':
+                try:
+                    if label_seq[seg_index].item() == int(label): 
+                        correct_segment += 1
+                except Exception as e:
+                    print(e)
+                    print('label_seq: ', label_seq)
+                    print('model_result: ', models_result)
+                    print('index: ', index)
+            else:
+                results.append(label)
+        total_segment += len(label_seq)
+    if args.part == 'dev':
+        print('Accuracy: ', 100 * correct_segment / total_segment)
+    else:
+        result_path = './results/result_{}_{}'.format('_'.join(args.pretrained_model) ,datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
+        print('Writing results to {}...'.format(result_path))
+        lines = 'Id,Category\n'
+        for index, result in enumerate(results):
+            if(index == len(results) - 1):
+                lines += str(index) + ',' + str(result)
+            else:
+                lines += str(index) + ',' + str(result) + '\n'
+        with open(result_path, 'w') as wr:
+            wr.writelines(lines)
 
 if __name__ == "__main__":
     main()
