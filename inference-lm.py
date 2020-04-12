@@ -73,9 +73,11 @@ def main():
     print('Device used: {}'.format(device))
     if args.part == 'dev':
         split = args.split
+        mode = 'active'
     else:
         split = 1
-    test_dataset = VideoDataset(part=args.part, load_all=True, split=split)
+        mode = None
+    test_dataset = VideoDataset(part=args.part, load_all=True, split=split, mode=mode)
     class_info = test_dataset.get_class_info()
     n_class = len(class_info['class_names'])
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False,
