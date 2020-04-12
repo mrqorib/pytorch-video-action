@@ -38,7 +38,8 @@ def pad_batch(batch, batchsize=1):
     padded_target = torch.empty((batchsize, max_length), dtype=torch.long).fill_(_TARGET_PAD)
     for i, l in enumerate(x_len):
         padded_seqs[i, 0:l] = x[i][0:l]
-        padded_target[i, 0:l] = y[i][0:l]
+        if len(y[i]) > 0:
+            padded_target[i, 0:l] = y[i][0:l]
     target = torch.flatten(padded_target)
     return padded_seqs, x_len, target
 
