@@ -90,7 +90,7 @@ def evaluate(model, dev_dataset, device):
 
             if model.__class__.__name__ == 'Seq2Seq':
                 labels = labels.reshape(inputs.shape[0], -1)
-                outputs = model(inputs, inputs_len, labels)
+                outputs = model(inputs, inputs_len, labels, 0)
 
                 outputs = outputs.transpose(0,1)
                 labels = labels.transpose(0,1)
