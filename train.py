@@ -75,11 +75,14 @@ def get_label_length_seq(content):
 
     return label_seq, length_seq
 
-def evaluate(model, dev_dataset, device):
+def evaluate(model, dev_dataset, device, criterion):
+    model.eval()
     correct_segment = 0
     total_segment = 0
     correct_frame = 0
     total_frame = 0
+    running_loss = 0.0
+    iteration = 0
     with torch.no_grad():
         for data in dev_dataset:
             inputs, inputs_len, labels = data
@@ -88,6 +91,8 @@ def evaluate(model, dev_dataset, device):
             label_seq, length_seq = get_label_length_seq(labels)
 
             outputs = model(inputs, inputs_len)
+            val_loss = criterion(outputs, labels)
+            running_loss += val_loss.detach().item()
             _, predicted = torch.max(outputs.data, 1)
             total_frame += labels.size(0)
             correct_frame += (predicted == labels).sum().item()
@@ -104,10 +109,11 @@ def evaluate(model, dev_dataset, device):
                     correct_segment += 1
             
             total_segment += len(label_seq)
+            iteration += 1
 
     accuracy_frame = (100 * correct_frame / total_frame)
     accuracy_segment = (100 * correct_segment / total_segment)
-    return accuracy_segment, accuracy_frame
+    return accuracy_segment, accuracy_frame, (running_loss / iteration)
 
 def main():
     args = parse_arguments()
@@ -205,6 +211,7 @@ def main():
 
     previous_dev = 0
     for epoch in range(total_epoch):
+        net.train()
         start = datetime.now()
         running_loss = 0.0
         print('Starting Epoch #{}, {} iterations'.format(epoch + 1, len(train_loader)))
@@ -232,12 +239,15 @@ def main():
             lr_scheduler.step()
 
         delta_time = (datetime.now() - start).seconds / 60.0
-        print('[%d, %5d] loss: %.3f (%.3f mins)' %
+        print('[%d, %5d] Train loss: %.3f (%.3f mins)' %
             (epoch + 1, i + 1, running_loss / i, delta_time))
         running_loss = 0.0
-        dev_acc, frame_acc = evaluate(net, dev_loader, device)
+        dev_acc, frame_acc, val_loss = evaluate(net, dev_loader, device, criterion)
+        print('[%d, %5d] Validation loss: %.3f (%.3f mins)' %
+            (epoch + 1, i + 1, running_loss / i, delta_time))
         print('Dev accuracy by frame: {:.3f}'.format(frame_acc))
-        print('Dev accuracy by segment: {:.3f}'.format(dev_acc))
+        print('Dev accuracy by segment: {:.3f} (Current best: {:.3f})'\
+            .format(dev_acc, previous_dev))
         if dev_acc > previous_dev:
             print('{} ==> {}'.format(dev_acc, previous_dev))
             model_path = 'models/{}_{:.2f}_dev.pth'.format(args.model, dev_acc)
