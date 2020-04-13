@@ -175,7 +175,12 @@ class MultiHeadAttention(nn.Module):
         self.mode = mode
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.attention = nn.MultiheadAttention(input_dim, num_heads, dropout_rate)
-        self.hidden1 = nn.Linear(input_dim, hidden_dim)
+        self.rnn = nn.GRU(
+            input_size=input_dim,
+            hidden_size=hidden_dim // 2,
+            batch_first=True,
+            bidirectional=True,
+            num_layers=1)
         self.output = nn.Linear(hidden_dim, n_class)
 
     def forward(self, x, x_len):
@@ -184,6 +189,9 @@ class MultiHeadAttention(nn.Module):
         x = x.transpose(0,1)
         x, _ = self.attention(x, x, x)
         x = x.transpose(0,1)
+        packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
+        packed_output, _ = self.rnn(packed)
+        x, _ = pad_packed_sequence(packed_output, batch_first=True)
         if self.mode == 'last':
             x = x[:,-1,:]
         x = self.hidden1(F.relu(x))
