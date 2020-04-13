@@ -30,7 +30,7 @@ def parse_arguments():
     parser.add_argument('--model', dest='model', default='simple_fc',
                         choices=['simple_fc', 'vanilla_lstm', 'bilstm',
                                  'bilstm_lm', 'attn', 'win_attn',
-                                 'bigru', 'attn', 'ms_tcn', 'ctcloss'], #TODO: add your model name here
+                                 'bigru', 'attn', 'ms_tcn', 'seq2seq', 'ctcloss'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
@@ -87,23 +87,28 @@ def evaluate(model, dev_dataset, device):
             labels = labels.to(device)
             label_seq, length_seq = get_label_length_seq(labels)
 
-            outputs = model(inputs, inputs_len)
+            if model.__class__.__name__ == 'Seq2Seq':
+                labels = labels.reshape(inputs.shape[0], -1)
+                outputs = model(inputs, inputs_len, labels)
+
+                outputs = outputs.transpose(0,1)
+                labels = labels.transpose(0,1)
+                outputs_dim = outputs.shape[-1]
+                outputs = outputs[1:].contiguous().view(-1, outputs_dim)
+                labels = labels[1:].contiguous().view(-1)
+
+            else:
+                outputs = model(inputs, inputs_len)
+
             _, predicted = torch.max(outputs.data, 1)
             total_frame += labels.size(0)
             correct_frame += (predicted == labels).sum().item()
 
-            for index, segment in enumerate(length_seq):
-                if (index == len(length_seq) - 1):
-                    break
-                start_frame = int(length_seq[index])
-                end_frame = int(length_seq[index+1])
-                predicted_labels = predicted[start_frame: end_frame]
-                # get most frequent one
-                predicted_label = int(torch.argmax(torch.bincount(predicted_labels)).item())
-                if label_seq[index] == predicted_label:
+            for index, segment in enumerate(length_seq[1:-1]):
+                if label_seq[index] == int(predicted[index]):
                     correct_segment += 1
 
-            total_segment += len(label_seq)
+            total_segment += (len(label_seq)-1)
 
     accuracy_frame = (100 * correct_frame / total_frame)
     accuracy_segment = (100 * correct_segment / total_segment)
@@ -114,19 +119,28 @@ def main():
     os.makedirs("models", exist_ok=True)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+    if args.model == 'seq2seq':
+        _TARGET_PAD = 0
+
     def pad_batch(batch, batchsize=args.batchsize, mode=args.pred_mode):
             batch = list(zip(*batch))
             x, y = batch[0], batch[1]
             x_len = [p.shape[0] for p in x]
+            if args.model == 'seq2seq':
+                y_len = [len(p) for p in y]
             max_length = max(x_len)
             padded_seqs = torch.zeros((batchsize, max_length, 400))
             if mode != 'cont':
                 y_length = 1
             else:
                 y_length = max_length
+            if args.model == 'seq2seq':
+                y_length = max([len(p) for p in y])
             padded_target = torch.empty((batchsize, y_length), dtype=torch.long).fill_(_TARGET_PAD)
             for i, l in enumerate(x_len):
                 padded_seqs[i, 0:l] = x[i][0:l]
+                if args.model == 'seq2seq':
+                    l = y_len[i]
                 if mode != 'cont':
                     padded_target[i,:] = y[i]
                 else:
@@ -138,8 +152,8 @@ def main():
             target = torch.flatten(padded_target)
             return padded_seqs, x_len, target
 
-    train_dataset = VideoDataset(part='train', load_all=args.load_all, split=args.split, mode=args.train_mode)
-    dev_dataset = VideoDataset(part='dev', load_all=args.load_all, split=args.split, mode=args.train_mode)
+    train_dataset = VideoDataset(part='train', load_all=args.load_all, split=args.split, mode=args.train_mode, model=args.model)
+    dev_dataset = VideoDataset(part='dev', load_all=args.load_all, split=args.split, mode=args.train_mode, model=args.model)
     class_info = train_dataset.get_class_info()
     bucket_batch_sampler = BucketBatchSampler(train_dataset.features, args.batchsize)
     train_loader = DataLoader(train_dataset, num_workers=args.num_workers,
@@ -184,6 +198,10 @@ def main():
                                  mode=args.pred_mode).to(device)
     elif args.model == 'ms_tcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
+    elif args.model == 'seq2seq':
+        enc = Encoder(400)
+        dec = Decoder(n_class=n_class)
+        net = Seq2Seq(enc, dec, device).to(device)
     elif args.model == 'ctcloss':
         net = BiGRU(400, n_class=n_class+1).to(device)
     #TODO: add your model name here
@@ -197,7 +215,7 @@ def main():
         model_state_dict = torch.load(model_path)
         net.load_state_dict(model_state_dict)
     # criterion = nn.CrossEntropyLoss()
-    if args.model == 'ms_tcn':
+    if args.model == 'ms_tcn' or args.model == 'seq2seq':
         criterion = nn.CrossEntropyLoss(ignore_index=_TARGET_PAD)
     elif args.model == 'ctcloss':
         criterion = nn.CTCLoss(blank=n_class, zero_infinity=True)
@@ -223,7 +241,21 @@ def main():
             optimizer.zero_grad()
 
             # forward + backward + optimize
-            outputs = net(inputs, inputs_len)
+            if args.model == 'seq2seq':
+                labels = labels.reshape(inputs.shape[0], -1)
+                outputs = net(inputs, inputs_len, labels)
+
+                outputs = outputs.transpose(0,1)
+                labels = labels.transpose(0,1)
+                # print(outputs.shape)
+                # print(labels.shape)
+
+                outputs_dim = outputs.shape[-1]
+                outputs = outputs[1:].contiguous().view(-1, outputs_dim)
+                labels = labels[1:].contiguous().view(-1)
+
+            else:
+                outputs = net(inputs, inputs_len)
 
             # if using ctc loss: prepare the inputs
             if args.model == 'ctcloss':

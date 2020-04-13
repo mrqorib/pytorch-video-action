@@ -66,7 +66,7 @@ class BucketBatchSampler(Sampler):
 class VideoDataset(Dataset):
 
 
-    def __init__(self, data_dir='./data', annot_path='.', part='train', split=3, load_all=False, mode='active'):
+    def __init__(self, data_dir='./data', annot_path='.', part='train', split=3, load_all=False, mode='active', model='vanilla_lstm'):
         self.part = part.lower().strip()
         self.split = split
         if self.part not in ["train", "dev", "test"]:
@@ -105,6 +105,8 @@ class VideoDataset(Dataset):
             print('Converting videos into segments...')
             self._turn_videos_to_segments()
             print('Data has been converted into {} {} segments.'.format(len(self.features), part))
+
+        self.model = model
 
 
     def _read_file(self, filename, offset_start = 0, offset_end=0):
@@ -275,6 +277,16 @@ class VideoDataset(Dataset):
         else:
             return self._load_label_file(self.filenames[idx])
 
+    def label_seq(self, label):
+        label_seq = []
+        start = 0
+        for i in range(len(label)):
+            if label[i] != label[start]:
+                label_seq.append(label[start])
+                start = i
+        label_seq.append(label[start])
+
+        return label_seq
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
@@ -285,6 +297,10 @@ class VideoDataset(Dataset):
             label = []
         else:
             label = self._get_label(idx)
+
+        if self.model == 'seq2seq':
+            label = self.label_seq(label)
+
         label = torch.tensor(label, dtype=torch.long)
         # label = label.type(torch.long)
         return (data, label)
