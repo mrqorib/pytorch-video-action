@@ -183,7 +183,7 @@ class Seq2Seq(nn.Module):
         hidden, cell = self.encoder(x, x_len)
         input = y[:,0]
 
-        for t in range(1, y_len-1):
+        for t in range(0, y_len):
             output, hidden, cell = self.decoder(input, hidden, cell)
             outputs[:,t,:] = output
 
@@ -194,7 +194,7 @@ class Seq2Seq(nn.Module):
         return outputs
 
 class Encoder(nn.Module):
-    def __init__(self, input_dim=400, hidden_dim=256,lstm_layer=4, dropout_rate=0.5):
+    def __init__(self, input_dim=400, hidden_dim=512,lstm_layer=4, dropout_rate=0.5):
         super(Encoder, self).__init__()
         self.hid_dim = hidden_dim
         self.n_layers = lstm_layer
@@ -208,13 +208,13 @@ class Encoder(nn.Module):
         self.dropout = nn.Dropout(p=dropout_rate)
 
     def forward(self, x, x_len):
+        x = self.dropout(x)
         packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
-        #packed = self.dropout(x)
         lstm_out, (hidden, cell) = self.rnn(packed)
         return hidden, cell
 
 class Decoder(nn.Module):
-    def __init__(self, n_class=2, input_dim=400, hidden_dim=256, lstm_layer=4, dropout_rate=0.5):
+    def __init__(self, n_class=2, input_dim=400, hidden_dim=512, lstm_layer=4, dropout_rate=0.5):
         super(Decoder, self).__init__()
         self.output_dim = n_class
         self.hid_dim = hidden_dim
@@ -232,7 +232,6 @@ class Decoder(nn.Module):
 
     def forward(self, input, hidden, cell):
         input = input.unsqueeze(1)
-        #print(input)
         embedded = self.dropout(self.embedding(input))
         lstm_out, (hidden, cell) = self.rnn(embedded, (hidden, cell))
         prediction = self.fc_out(lstm_out.squeeze(1))

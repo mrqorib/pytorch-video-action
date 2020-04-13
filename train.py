@@ -94,8 +94,8 @@ def evaluate(model, dev_dataset, device):
                 outputs = outputs.transpose(0,1)
                 labels = labels.transpose(0,1)
                 outputs_dim = outputs.shape[-1]
-                outputs = outputs[1:].contiguous().view(-1, outputs_dim)
-                labels = labels[1:].contiguous().view(-1)
+                outputs = outputs.contiguous().view(-1, outputs_dim)
+                labels = labels.contiguous().view(-1)
 
             else:
                 outputs = model(inputs, inputs_len)
@@ -104,11 +104,11 @@ def evaluate(model, dev_dataset, device):
             total_frame += labels.size(0)
             correct_frame += (predicted == labels).sum().item()
 
-            for index, segment in enumerate(length_seq[1:-1]):
+            for index, segment in enumerate(length_seq[1:]):
                 if label_seq[index] == int(predicted[index]):
                     correct_segment += 1
 
-            total_segment += (len(label_seq)-1)
+            total_segment += (len(label_seq))
 
     accuracy_frame = (100 * correct_frame / total_frame)
     accuracy_segment = (100 * correct_segment / total_segment)
@@ -117,7 +117,7 @@ def evaluate(model, dev_dataset, device):
 def main():
     args = parse_arguments()
     os.makedirs("models", exist_ok=True)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
     if args.model == 'seq2seq':
         _TARGET_PAD = 0
@@ -251,8 +251,8 @@ def main():
                 # print(labels.shape)
 
                 outputs_dim = outputs.shape[-1]
-                outputs = outputs[1:].contiguous().view(-1, outputs_dim)
-                labels = labels[1:].contiguous().view(-1)
+                outputs = outputs.contiguous().view(-1, outputs_dim)
+                labels = labels.contiguous().view(-1)
 
             else:
                 outputs = net(inputs, inputs_len)
@@ -289,7 +289,7 @@ def main():
             (epoch + 1, i + 1, running_loss / i, delta_time))
         running_loss = 0.0
         dev_acc, frame_acc = evaluate(net, dev_loader, device)
-        print('Dev accuracy by frame: {:.3f}'.format(frame_acc))
+        #print('Dev accuracy by frame: {:.3f}'.format(frame_acc))
         print('Dev accuracy by segment: {:.3f}'.format(dev_acc))
         if dev_acc > previous_dev:
             print('{} ==> {}'.format(dev_acc, previous_dev))
