@@ -194,11 +194,11 @@ class MultiHeadAttention(nn.Module):
         x, _ = pad_packed_sequence(packed_output, batch_first=True)
         if self.mode == 'last':
             x = x[:,-1,:]
-        x = self.hidden1(F.relu(x))
-        if self.mode == 'cont': 
-            x = x.contiguous().view(-1, self.hidden_dim)
         elif self.mode == 'avg':
             x = torch.mean(x, dim=1)
+        # x = self.hidden1(F.relu(x))
+        if self.mode == 'cont':
+            x = x.contiguous().view(-1, self.hidden_dim)
         x = self.output(F.relu(x))
         return F.log_softmax(x, dim=1)
 
