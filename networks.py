@@ -174,17 +174,23 @@ class Seq2Seq(nn.Module):
         self.decoder = decoder
         self.device = device
 
+    def create_mask(self, x, x_len):
+        lens = torch.Tensor(x_len)
+        mask = torch.arange(x.shape[1]).expand(len(lens), x.shape[1]) < lens.unsqueeze(1)
+        return mask.to(self.device)
+
     def forward(self, x, x_len, y, teacher_forcing_ratio = 0.5):
         batch_size = y.shape[0]
         y_len = y.shape[1]
         trg_vocab_size = self.decoder.output_dim
 
         outputs = torch.zeros(batch_size, y_len, trg_vocab_size).to(self.device)
-        hidden, cell = self.encoder(x, x_len)
+        encoder_outputs, hidden = self.encoder(x, x_len)
         input = y[:,0]
+        mask = self.create_mask(x, x_len)
 
         for t in range(0, y_len):
-            output, hidden, cell = self.decoder(input, hidden, cell)
+            output, hidden, _ = self.decoder(input, hidden, encoder_outputs, mask)
             outputs[:,t,:] = output
 
             teacher_force = random.random() < teacher_forcing_ratio
@@ -194,48 +200,69 @@ class Seq2Seq(nn.Module):
         return outputs
 
 class Encoder(nn.Module):
-    def __init__(self, input_dim=400, hidden_dim=512,lstm_layer=4, dropout_rate=0.5):
+    def __init__(self, input_dim=400, enc_hid_dim=512, dec_hid_dim=512, dropout_rate=0.5):
         super(Encoder, self).__init__()
-        self.hid_dim = hidden_dim
-        self.n_layers = lstm_layer
-        self.rnn = nn.LSTM(
+        self.rnn = nn.GRU(
             input_size=input_dim,
-            hidden_size=hidden_dim // 2,
-            num_layers = lstm_layer,
+            hidden_size=enc_hid_dim,
             batch_first=True,
-            bidirectional=True,
-            dropout=dropout_rate)
+            bidirectional=True)
+        self.fc = nn.Linear(enc_hid_dim*2, dec_hid_dim)
         self.dropout = nn.Dropout(p=dropout_rate)
 
     def forward(self, x, x_len):
         x = self.dropout(x)
         packed = pack_padded_sequence(x, x_len, batch_first=True, enforce_sorted=False)
-        lstm_out, (hidden, cell) = self.rnn(packed)
-        return hidden, cell
+        packed_outputs, hidden = self.rnn(packed)
+        outputs, _ = pad_packed_sequence(packed_outputs, batch_first=True)
+        hidden = torch.tanh(self.fc(torch.cat((hidden[-2,:,:], hidden[-1,:,:]), dim = 1)))
+        return outputs, hidden
+
+class Attention(nn.Module):
+    def __init__(self, enc_hid_dim=512, dec_hid_dim=512):
+        super(Attention, self).__init__()
+        self.attn = nn.Linear((enc_hid_dim * 2) + dec_hid_dim, dec_hid_dim)
+        self.v = nn.Linear(dec_hid_dim, 1, bias = False)
+
+    def forward(self, hidden, encoder_outputs, mask):
+        batch_size = encoder_outputs.shape[0]
+        src_len = encoder_outputs.shape[1]
+
+        hidden = hidden.unsqueeze(1).repeat(1, src_len, 1)
+        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim = 2)))
+        attention = self.v(energy).squeeze(2)
+        attention = attention.masked_fill(mask == 0, -1e10)
+
+        return F.softmax(attention, dim = 1)
 
 class Decoder(nn.Module):
-    def __init__(self, n_class=2, input_dim=400, hidden_dim=512, lstm_layer=4, dropout_rate=0.5):
+    def __init__(self, n_class=2, input_dim=400, enc_hid_dim=512, dec_hid_dim=512, dropout_rate=0.5, attention=Attention()):
         super(Decoder, self).__init__()
         self.output_dim = n_class
-        self.hid_dim = hidden_dim
-        self.n_layers = lstm_layer
+        self.attention = attention
         self.embedding = nn.Embedding(n_class, input_dim)
-        self.rnn = nn.LSTM(
-            input_size=input_dim,
-            hidden_size=hidden_dim // 2,
-            num_layers = lstm_layer,
-            batch_first=True,
-            bidirectional=True,
-            dropout=dropout_rate)
-        self.fc_out = nn.Linear(hidden_dim, n_class)
+        self.rnn = nn.GRU(
+            input_size=(enc_hid_dim * 2) + input_dim,
+            hidden_size=dec_hid_dim,
+            batch_first=True)
+        self.fc_out = nn.Linear(enc_hid_dim * 2 + dec_hid_dim + input_dim, n_class)
         self.dropout = nn.Dropout(p=dropout_rate)
 
-    def forward(self, input, hidden, cell):
+    def forward(self, input, hidden, encoder_outputs, mask):
         input = input.unsqueeze(1)
         embedded = self.dropout(self.embedding(input))
-        lstm_out, (hidden, cell) = self.rnn(embedded, (hidden, cell))
-        prediction = self.fc_out(lstm_out.squeeze(1))
-        return prediction, hidden, cell
+
+        a = self.attention(hidden, encoder_outputs, mask)
+        a = a.unsqueeze(1)
+        weighted = torch.bmm(a, encoder_outputs)
+
+        rnn_input = torch.cat((embedded, weighted), dim = 2)
+        outputs, hidden = self.rnn(rnn_input, hidden.unsqueeze(0))
+        embedded = embedded.squeeze(1)
+        outputs = outputs.squeeze(1)
+        weighted = weighted.squeeze(1)
+        prediction = self.fc_out(torch.cat((outputs, weighted, embedded), dim = 1))
+        return prediction, hidden.squeeze(0), a.squeeze(1)
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, input_dim=400, num_heads=4, hidden_dim=256,

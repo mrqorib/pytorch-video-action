@@ -76,6 +76,7 @@ def get_label_length_seq(content):
     return label_seq, length_seq
 
 def evaluate(model, dev_dataset, device):
+    model.eval()
     correct_segment = 0
     total_segment = 0
     correct_frame = 0
@@ -117,7 +118,7 @@ def evaluate(model, dev_dataset, device):
 def main():
     args = parse_arguments()
     os.makedirs("models", exist_ok=True)
-    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     if args.model == 'seq2seq':
         _TARGET_PAD = 0
@@ -199,8 +200,9 @@ def main():
     elif args.model == 'ms_tcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
     elif args.model == 'seq2seq':
+        attn = Attention()
         enc = Encoder(400)
-        dec = Decoder(n_class=n_class)
+        dec = Decoder(n_class=n_class, attention=attn)
         net = Seq2Seq(enc, dec, device).to(device)
     elif args.model == 'ctcloss':
         net = BiGRU(400, n_class=n_class+1).to(device)
@@ -228,6 +230,7 @@ def main():
 
     previous_dev = 0
     for epoch in range(total_epoch):
+        net.train()
         start = datetime.now()
         running_loss = 0.0
         print('Starting Epoch #{}, {} iterations'.format(epoch + 1, len(train_loader)))
