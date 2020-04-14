@@ -122,6 +122,8 @@ def main():
 
     if args.model == 'seq2seq':
         _TARGET_PAD = 0
+    else:
+        _TARGET_PAD = -1
 
     def pad_batch(batch, batchsize=args.batchsize, mode=args.pred_mode):
             batch = list(zip(*batch))

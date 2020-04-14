@@ -186,7 +186,7 @@ class Seq2Seq(nn.Module):
 
         outputs = torch.zeros(batch_size, y_len, trg_vocab_size).to(self.device)
         encoder_outputs, hidden = self.encoder(x, x_len)
-        input = y[:,0]
+        input = y[:,0].to(self.device).long()
         mask = self.create_mask(x, x_len)
 
         for t in range(0, y_len):

@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU, MultiHeadAttention, MultiStageModel #TODO: import your model here
+from networks import * #TODO: import your model here
 from statistics import mode
 
 def parse_arguments():
@@ -39,7 +39,7 @@ def most_frequent(List):
 def main():
     args = parse_arguments()
     os.makedirs("results", exist_ok=True)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
     print('Device used: {}'.format(device))
     test_dataset = VideoDataset(part='test', load_all=args.load_all, split=1, mode='None')
     class_info = test_dataset.get_class_info()
@@ -61,6 +61,11 @@ def main():
             net = MultiHeadAttention(400, args.attn_head, n_class=n_class).to(device)
         elif model == 'mstcn':
             net = MultiStageModel(400, n_class=n_class).to(device)
+        elif model == 'seq2seq':
+            attn = Attention()
+            enc = Encoder(400)
+            dec = Decoder(n_class=n_class, attention=attn)
+            net = Seq2Seq(enc, dec, device).to(device)
         try:
             model_state_dict = torch.load(os.path.join('.', 'models', '{}.pth'.format(model_filename)), map_location=device)
             net.load_state_dict(model_state_dict)
@@ -83,11 +88,21 @@ def main():
         models_result = {}
         for key in models:
             model = models[key]
-            outputs = model(inputs, inputs_len)
-            _, predicted = torch.max(outputs.data, 1)
+
             segments = test_dataset.segment_lines[i]
+            output_format = torch.zeros([1, len(segments)])
+
+            outputs = model(inputs, inputs_len, output_format, 0)
+            outputs = outputs.transpose(0,1)
+            outputs_dim = outputs.shape[-1]
+            outputs = outputs.contiguous().view(-1, outputs_dim)
+
+            _, predicted = torch.max(outputs.data, 1)
+
             # break the predicted labels to segments and take max frequency
-            for index, segment in enumerate(segments):
+            for index, segment in enumerate(segments[]):
+                model_prediction = int(predicted[index])
+
                 if (index == len(segments) - 1):
                     break
                 start_frame = int(segments[index])
@@ -96,25 +111,25 @@ def main():
                 if(segment_key not in models_result):
                     models_result[segment_key] = {
                         'label': [],
-                        'probability': [],
-                        'no_of_frames': []
+                        # 'probability': [],
+                        # 'no_of_frames': []
                     }
-                predicted_labels = predicted[start_frame: end_frame]
-                normalized_outputs = (_[start_frame: end_frame])/sum(_)
+                # predicted_labels = predicted[start_frame: end_frame]
+                # normalized_outputs = (_[start_frame: end_frame])/sum(_)
                 # get most frequent one
-                model_prediction = int(torch.argmax(torch.bincount(predicted_labels)).item())
+                # model_prediction = int(torch.argmax(torch.bincount(predicted_labels)).item())
 
-                # take next highest if prediction is 0
-                if (model_prediction == 0 and torch.bincount(predicted_labels).shape[0] > 1):
-                    model_prediction = int(torch.argsort(torch.bincount(predicted_labels))[1].item())
+                # # take next highest if prediction is 0
+                # if (model_prediction == 0 and torch.bincount(predicted_labels).shape[0] > 1):
+                #     model_prediction = int(torch.argsort(torch.bincount(predicted_labels))[1].item())
 
-                # if all 0s, ignore the result
-                if (model_prediction != 0):
-                    model_probability_index = torch.LongTensor([i for i, e in enumerate(predicted_labels) if int(e) == model_prediction]).to(device)
-                    model_probability = float(torch.take(normalized_outputs, model_probability_index).mean())
-                    models_result[segment_key]['label'].append(model_prediction)
-                    models_result[segment_key]['probability'].append(model_probability)
-                    models_result[segment_key]['no_of_frames'].append(len(model_probability_index))
+                # # if all 0s, ignore the result
+                # if (model_prediction != 0):
+                # model_probability_index = torch.LongTensor([i for i, e in enumerate(predicted_labels) if int(e) == model_prediction]).to(device)
+                # model_probability = float(torch.take(normalized_outputs, model_probability_index).mean())
+                models_result[segment_key]['label'].append(model_prediction)
+                # models_result[segment_key]['probability'].append(model_probability)
+                # models_result[segment_key]['no_of_frames'].append(len(model_probability_index))
 
         # select the most frequent one out of the model, where first model has the priority
         for segment in models_result:
@@ -122,22 +137,24 @@ def main():
             try:
                 label = mode(models_result[segment]['label'])
             except:
-                try:
-                    # if same length then get the probability
-                    if(len(set(models_result[segment]['no_of_frames'])) == 1):
-                        probability = models_result[segment]['probability']
-                        if args.prob == 'big':
-                            index = probability.index(max(probability))
-                        else:
-                            index = probability.index(min(probability))
-                    else:
-                        no_of_frames = models_result[segment]['no_of_frames']
-                        index = no_of_frames.index(max(no_of_frames))
-                    label = models_result[segment]['label'][index]
-                except:
-                    # error: every model is predicting 0
-                    print('Blank prediction.')
-                    label = 0
+                #print(models_result[segment]['label'])
+                label = models_result[segment]['label'][0]
+                # try:
+                #     # if same length then get the probability
+                #     if(len(set(models_result[segment]['no_of_frames'])) == 1):
+                #         probability = models_result[segment]['probability']
+                #         if args.prob == 'big':
+                #             index = probability.index(max(probability))
+                #         else:
+                #             index = probability.index(min(probability))
+                #     else:
+                #         no_of_frames = models_result[segment]['no_of_frames']
+                #         index = no_of_frames.index(max(no_of_frames))
+                #     label = models_result[segment]['label'][index]
+                # except:
+                #     # error: every model is predicting 0
+                #     print('Blank prediction.')
+                #     label = 0
 
             results.append(label)
     result_path = './results/result_{}_{}'.format('_'.join(args.pretrained_model) ,datetime.now().strftime("%Y_%m_%d_%H_%M_%S"))
