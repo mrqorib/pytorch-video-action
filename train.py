@@ -63,7 +63,7 @@ def parse_arguments():
                         help='Dropout rate of LSTM layer')
     parser.add_argument('--lstm_hidden1', dest='lstm_hidden1', type=int, default=256,
                         help='Number of LSTM Hidden neurons')
-    parser.add_argument('--lstm_hidden2', dest='lstm_hidden2', type=int, default=2,
+    parser.add_argument('--lstm_hidden2', dest='lstm_hidden2', type=int, default=64,
                         help='Number of linear hidden neuron')
     return parser.parse_args()
 
@@ -87,6 +87,7 @@ def eval_beam_search(model, dev_dataset, device, lm_path,
     import kenlm
     lm_model = kenlm.LanguageModel(lm_path)
 
+    model.eval()
     correct_segment = 0
     total_segment = 0
     correct_frame = 0
@@ -343,7 +344,7 @@ def main():
             .format(dev_acc, previous_dev))
         if dev_acc > previous_dev:
             print('{} ==> {}'.format(dev_acc, previous_dev))
-            model_path = 'models/{}{}_{:.2f}_dev.pth'.format(args.model, args.split, dev_acc)
+            model_path = 'models/{}_{:.2f}_dev.pth'.format(args.model, dev_acc)
             torch.save(net.state_dict(), model_path)
             previous_dev = dev_acc
 
