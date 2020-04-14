@@ -27,8 +27,8 @@ def parse_arguments():
                         help='learning rate')
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
-    parser.add_argument('--model', dest='model', default='simplefc',
-                        choices=['simplefc', 'vanilla_lstm', 'bilstm',
+    parser.add_argument('--model', dest='model', default='mstcn',
+                        choices=['vanillalstm', 'bilstm',
                                  'bilstmlm', 'attn', 'winattn',
                                  'bigru', 'attn', 'mstcn', 'ctcloss'], #TODO: add your model name here
                         help='Choose the type of model for learning')
@@ -215,9 +215,7 @@ def main():
                         num_workers=args.num_workers)
     n_class = len(class_info['class_names'])
 
-    if args.model == 'simplefc':
-        net = SimpleFC(400, n_class).to(device)
-    elif args.model == 'vanillalstm':
+    if args.model == 'vanillalstm':
         net = vanillaLSTM(400,
                         lstm_layer=args.lstm_layer,
                         hidden_dim=args.lstm_hidden1,
@@ -242,7 +240,7 @@ def main():
     elif args.model == 'winattn':
         net = ExpWindowAttention(400, args.attn_head, n_class=n_class).to(device)
     elif args.model == 'bigru':
-       net = BiGRU(400, n_class=n_class).to(device)
+        net = BiGRU(400, n_class=n_class).to(device)
     elif args.model == 'attn':
         net = MultiHeadAttention(400,
                                  args.attn_head,
