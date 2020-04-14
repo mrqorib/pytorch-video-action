@@ -84,7 +84,14 @@ elif args.model == 'mstcn':
 # elif args.model == 'mymodel':
 #   net = MyNet(<arguments>).to(device)
 ```
-3. Go to inference.py or inference-scene.py append in the else-if chain to initialize the network class
+3. Go to train.py append your model name into the arguments
+```bash
+parser.add_argument('--model', dest='model', default='mstcn',
+                        choices=['vanillalstm', 'bilstm',
+                                 'bilstmlm', 'attn', 'winattn',
+                                 'bigru', 'attn', 'mstcn', 'ctcloss'], #TODO: add your model name here
+```
+4. Go to inference.py or inference-scene.py append in the else-if chain to initialize the network class
 ```bash
 elif model == 'mstcn':
     net = MultiStageModel(400, n_class=n_class).to(device)
