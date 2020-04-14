@@ -213,9 +213,9 @@ class ExpWindowAttention(nn.Module):
         self.attention = nn.MultiheadAttention(input_dim, num_heads, dropout_rate)
         self.output = nn.Linear(input_dim, n_class)
         self.combine_output = nn.Linear(n_class * (window_size + 1), n_class)
-    
+
     def forward(self, x, x_len):
-        
+
         # x = self.dropout_layer(x)
         batchsize, max_len, input_dim = x.shape
         x = F.pad(x, (0, 0, 0, self.window_size), "constant", 0)
@@ -250,9 +250,9 @@ class ExpWindowAttention(nn.Module):
 #         self.attention = nn.MultiheadAttention(input_dim, num_heads, dropout_rate)
 #         self.output = nn.Linear(input_dim, n_class)
 #         self.combine_output = nn.Linear(n_class * (window_size + 1), n_class)
-    
+
 #     def forward(self, x, x_len):
-        
+
 #         # x = self.dropout_layer(x)
 #         batchsize, max_len, input_dim = x.shape
 #         x = F.pad(x, (0, 0, self.window_size, self.window_size), "constant", 0)
@@ -289,14 +289,14 @@ class ExpWindowAttention(nn.Module):
         # for idx, feat in enumerate(att_feats):
         #     if idx in start_idx:
         #         last_class = np.zeros((1,))
-        
+
         # x = x.view(-1, self.input_dim)
         # assert x.shape == (max_len * batchsize, self.input_dim)
         # x = self.output(x)
         # return F.log_softmax(x, dim=1)
 
 class MultiStageModel(nn.Module):
-    def __init__(self, dim=400, num_stages=4, num_layers=10, num_f_maps=64, n_class=2):
+    def __init__(self, dim=400, num_stages=4, num_layers=20, num_f_maps=64, n_class=2):
         super(MultiStageModel, self).__init__()
         self.stage1 = SingleStageModel(num_layers, num_f_maps, dim, n_class)
         self.stages = nn.ModuleList([copy.deepcopy(SingleStageModel(num_layers, num_f_maps, n_class, n_class)) for s in range(num_stages-1)])
@@ -304,9 +304,9 @@ class MultiStageModel(nn.Module):
 
     def forward(self, x, x_len):
         x = x.transpose(1,2)
-        mask = torch.zeros(x.shape[0], self.n_class, max(x_len), dtype=torch.float).cuda()
+        mask = torch.zeros(x.shape[0], self.n_class, max(x_len), dtype=torch.float, device=x.device)
         for i in range(x.shape[0]):
-            mask[i, :, :x_len[i]] = torch.ones(self.n_class, x_len[i]).cuda()
+            mask[i, :, :x_len[i]] = torch.ones(self.n_class, x_len[i], device=x.device)
 
         out = self.stage1(x, mask)
         outputs = out.unsqueeze(0)

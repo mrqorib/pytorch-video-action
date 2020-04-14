@@ -30,7 +30,7 @@ def parse_arguments():
     parser.add_argument('--model', dest='model', default='simple_fc',
                         choices=['simple_fc', 'vanilla_lstm', 'bilstm',
                                  'bilstm_lm', 'attn', 'win_attn',
-                                 'bigru', 'attn', 'ms_tcn'], #TODO: add your model name here
+                                 'bigru', 'attn', 'ms_tcn', 'ctcloss'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
@@ -43,9 +43,16 @@ def parse_arguments():
     parser.add_argument('--pred_mode', dest='pred_mode', default='cont',
                         choices=['last', 'avg', 'cont'], help='Classification for segment train-mode')
     parser.add_argument("--load_all", type=bool, nargs='?',
+                        const=True, default=True,
+                        help='[Deprecated ]Now enforced to use --load_all')
+    parser.add_argument("--eval", type=bool, nargs='?',
                         const=True, default=False,
-                        help='Load all data into RAM '\
-                            '(make sure you have enough free Memory).')
+                        help='Only evaluating model, not training')
+    # beam search params
+    parser.add_argument('--lm_path', dest='lm_path', default=None,
+                        help='Path to the language model for beam search decoding')
+    parser.add_argument('--beam_size', dest='beam_size', type=int, default=5,
+                        help='beam_size')
     # attn model params
     parser.add_argument('--attn_head', dest='attn_head', type=int, default=4,
                         help='Number of head in MultiHeadAttention')
@@ -56,7 +63,7 @@ def parse_arguments():
                         help='Dropout rate of LSTM layer')
     parser.add_argument('--lstm_hidden1', dest='lstm_hidden1', type=int, default=256,
                         help='Number of LSTM Hidden neurons')
-    parser.add_argument('--lstm_hidden2', dest='lstm_hidden2', type=int, default=2,
+    parser.add_argument('--lstm_hidden2', dest='lstm_hidden2', type=int, default=64,
                         help='Number of linear hidden neuron')
     return parser.parse_args()
 
@@ -75,14 +82,70 @@ def get_label_length_seq(content):
 
     return label_seq, length_seq
 
-def evaluate(model, dev_dataset, device, criterion):
+def eval_beam_search(model, dev_dataset, device, lm_path,
+                beam_size=5, threshold=0.15):
+    import kenlm
+    lm_model = kenlm.LanguageModel(lm_path)
+
     model.eval()
     correct_segment = 0
     total_segment = 0
     correct_frame = 0
     total_frame = 0
-    running_loss = 0.0
-    iteration = 0
+    for data in dev_dataset:
+        inputs, inputs_len, labels = data
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        label_seq, length_seq = get_label_length_seq(labels)
+
+        outputs = model(inputs, inputs_len)
+        _, predicted = torch.max(outputs.data, 1)
+        total_frame += labels.size(0)
+        correct_frame += (predicted == labels).sum().item()
+        
+        prediction_beam = [('',0)]
+        for index, segment in enumerate(length_seq):
+            if (index == len(length_seq) - 1):
+                break
+            start_frame = int(length_seq[index])
+            end_frame = int(length_seq[index+1])
+            frame_prediction = predicted[start_frame: end_frame]
+            # add to the beam
+            label_count = torch.bincount(frame_prediction)
+            label_prob = (label_count - min(label_count)) / (10e-6 + max(label_count) - min(label_count))
+            predicted_labels = torch.argsort(label_count, descending=True)
+            label_prob = label_prob[predicted_labels]
+            mask = label_prob > threshold
+            predicted_labels = predicted_labels[mask]
+            new_beam = []
+            for (current_pred, current_prob) in prediction_beam:
+                for label in predicted_labels:
+                    label = label.item()
+                    new_prob = current_prob
+                    new_pred = current_pred + ' ' + str(label)
+                    new_pred = new_pred.strip()
+                    lm_score = lm_model.score(new_pred)
+                    new_prob = lm_score
+                    new_beam.append((new_pred, new_prob))
+            prediction_beam = sorted(new_beam, key=lambda x: x[1], reverse=True)[:beam_size]
+        prediction = prediction_beam[0][0].split(' ')
+        assert len(prediction) == len(label_seq)
+        for index, predicted_label in enumerate(prediction):
+            if label_seq[index].item() == int(predicted_label): 
+                    correct_segment += 1
+        total_segment += len(label_seq)
+        # break
+    
+    accuracy_frame = (100 * correct_frame / total_frame)
+    accuracy_segment = (100 * correct_segment / total_segment)
+    return accuracy_segment, accuracy_frame 
+
+def evaluate(model, dev_dataset, device):
+    model.eval()
+    correct_segment = 0
+    total_segment = 0
+    correct_frame = 0
+    total_frame = 0
     with torch.no_grad():
         for data in dev_dataset:
             inputs, inputs_len, labels = data
@@ -91,12 +154,10 @@ def evaluate(model, dev_dataset, device, criterion):
             label_seq, length_seq = get_label_length_seq(labels)
 
             outputs = model(inputs, inputs_len)
-            val_loss = criterion(outputs, labels)
-            running_loss += val_loss.detach().item()
             _, predicted = torch.max(outputs.data, 1)
             total_frame += labels.size(0)
             correct_frame += (predicted == labels).sum().item()
-            
+
             for index, segment in enumerate(length_seq):
                 if (index == len(length_seq) - 1):
                     break
@@ -105,15 +166,14 @@ def evaluate(model, dev_dataset, device, criterion):
                 predicted_labels = predicted[start_frame: end_frame]
                 # get most frequent one
                 predicted_label = int(torch.argmax(torch.bincount(predicted_labels)).item())
-                if label_seq[index] == predicted_label: 
+                if label_seq[index] == predicted_label:
                     correct_segment += 1
-            
+
             total_segment += len(label_seq)
-            iteration += 1
 
     accuracy_frame = (100 * correct_frame / total_frame)
     accuracy_segment = (100 * correct_segment / total_segment)
-    return accuracy_segment, accuracy_frame, (running_loss / iteration)
+    return accuracy_segment, accuracy_frame
 
 def main():
     args = parse_arguments()
@@ -143,7 +203,7 @@ def main():
 
             target = torch.flatten(padded_target)
             return padded_seqs, x_len, target
-    
+
     train_dataset = VideoDataset(part='train', load_all=args.load_all, split=args.split, mode=args.train_mode)
     dev_dataset = VideoDataset(part='dev', load_all=args.load_all, split=args.split, mode=args.train_mode)
     class_info = train_dataset.get_class_info()
@@ -190,6 +250,8 @@ def main():
                                  mode=args.pred_mode).to(device)
     elif args.model == 'ms_tcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
+    elif args.model == 'ctcloss':
+        net = BiGRU(400, n_class=n_class+1).to(device)
     #TODO: add your model name here
     # elif args.model == 'my_model':
     #    net = MyNet(<arguments>).to(device)
@@ -198,16 +260,34 @@ def main():
 
     if args.pretrained_model is not None:
         model_path = os.path.join('models', '{}.pth'.format(args.pretrained_model))
-        model_state_dict = torch.load(model_path)
+        model_state_dict = torch.load(model_path, map_location=device)
         net.load_state_dict(model_state_dict)
     # criterion = nn.CrossEntropyLoss()
     if args.model == 'ms_tcn':
         criterion = nn.CrossEntropyLoss(ignore_index=_TARGET_PAD)
+    elif args.model == 'ctcloss':
+        criterion = nn.CTCLoss(blank=n_class, zero_infinity=True)
     else:
         criterion = nn.NLLLoss(ignore_index=_TARGET_PAD)
+
     optimizer = optim.Adam(net.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08)
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.lr_step_size, gamma=args.lr_gamma)
     total_epoch = args.epoch
+
+    if args.eval:
+        if args.pretrained_model is None:
+            print('[ERROR] Please provide the model path with --pretrained_model <model_path>')
+            print('Exiting.')
+            return
+        
+        if args.lm_path is not None:
+            dev_acc, frame_acc = eval_beam_search(net, dev_loader, device, args.lm_path, args.beam_size)
+        else:
+            dev_acc, frame_acc = evaluate(net, dev_loader, device)
+        
+        print('Dev accuracy by frame: {:.3f}'.format(frame_acc))
+        print('Dev accuracy by segment: {:.3f}'.format(dev_acc))
+        return
 
     previous_dev = 0
     for epoch in range(total_epoch):
@@ -226,9 +306,25 @@ def main():
 
             # forward + backward + optimize
             outputs = net(inputs, inputs_len)
-            # print(outputs.shape)
-            # print(labels.shape)
-            loss = criterion(outputs, labels)
+
+            # if using ctc loss: prepare the inputs
+            if args.model == 'ctcloss':
+                labels = labels.reshape(inputs.shape[0], -1)
+                targets = torch.tensor([], dtype=torch.int64, device=device)
+                targets_len = []
+
+                for j in range(labels.shape[0]):
+                    unique_labels = torch.unique_consecutive(labels[j])
+                    targets = torch.cat((targets, unique_labels))
+                    targets_len.append(unique_labels.shape[0])
+
+                outputs = outputs.reshape(inputs.shape[0], inputs.shape[1], -1)
+                outputs = outputs.permute(1,0,2)
+                loss = criterion(outputs, targets, torch.tensor(inputs_len), torch.tensor(targets_len))
+
+            else:
+                loss = criterion(outputs, labels)
+
             loss.backward()
             optimizer.step()
 
@@ -242,9 +338,7 @@ def main():
         print('[%d, %5d] Train loss: %.3f (%.3f mins)' %
             (epoch + 1, i + 1, running_loss / i, delta_time))
         running_loss = 0.0
-        dev_acc, frame_acc, val_loss = evaluate(net, dev_loader, device, criterion)
-        print('[%d, %5d] Validation loss: %.3f (%.3f mins)' %
-            (epoch + 1, i + 1, running_loss / i, delta_time))
+        dev_acc, frame_acc = evaluate(net, dev_loader, device)
         print('Dev accuracy by frame: {:.3f}'.format(frame_acc))
         print('Dev accuracy by segment: {:.3f} (Current best: {:.3f})'\
             .format(dev_acc, previous_dev))
