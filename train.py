@@ -27,10 +27,10 @@ def parse_arguments():
                         help='learning rate')
     parser.add_argument('--num_workers', dest='num_workers', type=int, default=0,
                         help='Num of workers to load the dataset. Use 0 for Windows')
-    parser.add_argument('--model', dest='model', default='simple_fc',
-                        choices=['simple_fc', 'vanilla_lstm', 'bilstm',
-                                 'bilstm_lm', 'attn', 'win_attn',
-                                 'bigru', 'attn', 'ms_tcn', 'ctcloss'], #TODO: add your model name here
+    parser.add_argument('--model', dest='model', default='simplefc',
+                        choices=['simplefc', 'vanilla_lstm', 'bilstm',
+                                 'bilstmlm', 'attn', 'winattn',
+                                 'bigru', 'attn', 'mstcn', 'ctcloss'], #TODO: add your model name here
                         help='Choose the type of model for learning')
     parser.add_argument('--pretrained_model', dest='pretrained_model', default=None,
                         help='pretrained_model file name')
@@ -215,9 +215,9 @@ def main():
                         num_workers=args.num_workers)
     n_class = len(class_info['class_names'])
 
-    if args.model == 'simple_fc':
+    if args.model == 'simplefc':
         net = SimpleFC(400, n_class).to(device)
-    elif args.model == 'vanilla_lstm':
+    elif args.model == 'vanillalstm':
         net = vanillaLSTM(400,
                         lstm_layer=args.lstm_layer,
                         hidden_dim=args.lstm_hidden1,
@@ -232,14 +232,14 @@ def main():
                     hidden_dim_2=args.lstm_hidden2,
                     n_class=n_class,
                     mode=args.pred_mode).to(device)
-    elif args.model == 'bilstm_lm':
+    elif args.model == 'bilstmlm':
         net = BiLSTMWithLM(input_dim=400,
                     lstm_layer=args.lstm_layer,
                     hidden_dim_1=args.lstm_hidden1,
                     dropout_rate=args.lstm_dropout,
                     hidden_dim_2=args.lstm_hidden2,
                     n_class=n_class).to(device)
-    elif args.model == 'win_attn':
+    elif args.model == 'winattn':
         net = ExpWindowAttention(400, args.attn_head, n_class=n_class).to(device)
     elif args.model == 'bigru':
        net = BiGRU(400, n_class=n_class).to(device)
@@ -248,7 +248,7 @@ def main():
                                  args.attn_head,
                                  n_class=n_class,
                                  mode=args.pred_mode).to(device)
-    elif args.model == 'ms_tcn':
+    elif args.model == 'mstcn':
         net = MultiStageModel(400, n_class=n_class).to(device)
     elif args.model == 'ctcloss':
         net = BiGRU(400, n_class=n_class+1).to(device)
@@ -263,7 +263,7 @@ def main():
         model_state_dict = torch.load(model_path, map_location=device)
         net.load_state_dict(model_state_dict)
     # criterion = nn.CrossEntropyLoss()
-    if args.model == 'ms_tcn':
+    if args.model == 'mstcn':
         criterion = nn.CrossEntropyLoss(ignore_index=_TARGET_PAD)
     elif args.model == 'ctcloss':
         criterion = nn.CTCLoss(blank=n_class, zero_infinity=True)
