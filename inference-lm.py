@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from data_utils import VideoDataset, BucketBatchSampler
-from networks import SimpleFC, vanillaLSTM, BiLSTM, BiGRU, MultiHeadAttention, MultiStageModel #TODO: import your model here
+from networks import *
 from statistics import mode 
 
 _TARGET_PAD = -1
@@ -86,9 +86,7 @@ def main():
     models = {}
     for model_filename in args.pretrained_model:
         model = '_'.join(model_filename.split('.')[0].split('_')[:-1])
-        if model == 'simple_fc':
-            net = SimpleFC(400, n_class).to(device)
-        elif model == 'vanilla_lstm':
+        if model == 'vanillalstm':
             net = vanillaLSTM(400, n_class=n_class).to(device)
         elif model == 'bilstm':
             net = BiLSTM(400, n_class=n_class).to(device)

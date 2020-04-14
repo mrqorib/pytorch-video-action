@@ -6,21 +6,6 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import copy
 import torch
 
-class SimpleFC(nn.Module):
-    def __init__(self, input_dim=400, n_class=2):
-        super(SimpleFC, self).__init__()
-        self.fc1 = nn.Linear(input_dim, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, 32)
-        self.fc4 = nn.Linear(32, n_class)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        x = self.fc4(x)
-        return x
-
 class vanillaLSTM(nn.Module):
     def __init__(self, input_dim=400, lstm_layer=1, dropout_rate=0,
                  hidden_dim=64, n_class=2, mode='cont'):
@@ -238,62 +223,6 @@ class ExpWindowAttention(nn.Module):
         final_output = final_output.reshape(-1, self.n_class)
         # print('inside: ', final_output.shape)
         return F.log_softmax(final_output, dim=1)
-
-# class ExpWindowAttention(nn.Module):
-#     def __init__(self, input_dim=400, num_heads=4, n_class=2,
-#                  dropout_rate=0.3, window_size=5, use_previous_output=True):
-#         super().__init__()
-#         self.input_dim = input_dim
-#         self.window_size = window_size
-#         self.n_class = n_class
-#         self.dropout_layer = nn.Dropout(p=dropout_rate)
-#         self.attention = nn.MultiheadAttention(input_dim, num_heads, dropout_rate)
-#         self.output = nn.Linear(input_dim, n_class)
-#         self.combine_output = nn.Linear(n_class * (window_size + 1), n_class)
-
-#     def forward(self, x, x_len):
-
-#         # x = self.dropout_layer(x)
-#         batchsize, max_len, input_dim = x.shape
-#         x = F.pad(x, (0, 0, self.window_size, self.window_size), "constant", 0)
-#         x = x.transpose(0,1)
-#         # start_frame = np.array([0] + x_len) + self.window_size
-#         att_feats = []
-#         final_output = torch.zeros((max_len, batchsize, self.n_class), device=x.device)
-#         for f in range(self.window_size, max_len):
-#             start_frame = f - self.window_size
-#             end_frame = f + self.window_size + 1
-#             context = x[start_frame:end_frame, :, :]
-#             feat, _ = self.attention(context, context, context)
-#             feat = feat[self.window_size,:,:]
-#             # print(feat.shape)
-#             assert feat.shape == (batchsize, input_dim)
-#             # feat = feat.squeeze(0)
-#             probs = self.output(feat)
-#             att_feats.append(probs)
-#             # print(att_feats)
-#             # print(len(att_feats[max(start_frame, 0):f+1]))
-#             context_feat = torch.cat(att_feats[max(start_frame, 0):f+1], 1)
-#             # print(context_feat.shape)
-#             len_diff = self.n_class * (self.window_size + 1) - context_feat.shape[1]
-#             if len_diff > 0:
-#                 context_feat = F.pad(context_feat, (len_diff, 0), "constant", 0)
-#             # print(context_feat.shape)
-#             assert context_feat.shape == (batchsize, self.n_class * (self.window_size + 1))
-#             final_output[start_frame,:,:] = self.combine_output(F.relu(context_feat))
-#         final_output = final_output.transpose(0,1)
-#         final_output = final_output.reshape(-1, self.n_class)
-#         # print('inside: ', final_output.shape)
-#         return F.log_softmax(final_output, dim=1)
-        # start_idx = np.cumsum([0] + x_len)
-        # for idx, feat in enumerate(att_feats):
-        #     if idx in start_idx:
-        #         last_class = np.zeros((1,))
-
-        # x = x.view(-1, self.input_dim)
-        # assert x.shape == (max_len * batchsize, self.input_dim)
-        # x = self.output(x)
-        # return F.log_softmax(x, dim=1)
 
 class MultiStageModel(nn.Module):
     def __init__(self, dim=400, num_stages=4, num_layers=20, num_f_maps=64, n_class=2):
