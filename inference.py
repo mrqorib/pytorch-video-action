@@ -18,7 +18,7 @@ def parse_arguments():
     parser.add_argument('--pretrained_model', dest='pretrained_model', nargs='+', required=True,
                         help='pretrained_model filename, filename must be standard ${model}_${accuracy}_dev, priority is given based on the asc order')
     parser.add_argument("--load_all", type=bool, nargs='?',
-                        const=True, default=False,
+                        const=True, default=True,
                         help='Load all data into RAM '\
                             '(make sure you have enough free Memory).')
     parser.add_argument("--prob", dest='prob', required=True, choices=['small', 'big'],
