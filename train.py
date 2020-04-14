@@ -140,6 +140,7 @@ def eval_beam_search(model, dev_dataset, device, lm_path,
     return accuracy_segment, accuracy_frame 
 
 def evaluate(model, dev_dataset, device):
+    model.eval()
     correct_segment = 0
     total_segment = 0
     correct_frame = 0
@@ -289,6 +290,7 @@ def main():
 
     previous_dev = 0
     for epoch in range(total_epoch):
+        net.train()
         start = datetime.now()
         running_loss = 0.0
         print('Starting Epoch #{}, {} iterations'.format(epoch + 1, len(train_loader)))
@@ -332,12 +334,13 @@ def main():
             lr_scheduler.step()
 
         delta_time = (datetime.now() - start).seconds / 60.0
-        print('[%d, %5d] loss: %.3f (%.3f mins)' %
+        print('[%d, %5d] Train loss: %.3f (%.3f mins)' %
             (epoch + 1, i + 1, running_loss / i, delta_time))
         running_loss = 0.0
         dev_acc, frame_acc = evaluate(net, dev_loader, device)
         print('Dev accuracy by frame: {:.3f}'.format(frame_acc))
-        print('Dev accuracy by segment: {:.3f}'.format(dev_acc))
+        print('Dev accuracy by segment: {:.3f} (Current best: {:.3f})'\
+            .format(dev_acc, previous_dev))
         if dev_acc > previous_dev:
             print('{} ==> {}'.format(dev_acc, previous_dev))
             model_path = 'models/{}{}_{:.2f}_dev.pth'.format(args.model, args.split, dev_acc)
